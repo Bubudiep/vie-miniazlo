@@ -1,5 +1,7 @@
 # Zalo Mini App
 
+# thử nghiệm push
+
 ## Development
 
 ### Using Zalo Mini App Extension
@@ -27,7 +29,6 @@
 1. **Create** a mini program. For instructions on how to create a mini program, please refer to the [Coffee Shop Tutorial](https://mini.zalo.me/tutorial/coffee-shop/step-1/)
 
 1. **Deploy** your mini program to Zalo using the mini app ID created.
-
    - **Using Zalo Mini App Extension**: navigate to the **Deploy** panel > **Login** > **Deploy**.
    - **Using Zalo Mini App CLI**:
      ```bash
