@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Icon, useNavigate } from "zmp-ui";
 import { HiHome } from "react-icons/hi2";
-import { RiHome9Fill, RiHome9Line } from "react-icons/ri";
+import { RiHome9Fill, RiHome9Line, RiNewspaperFill, RiNewspaperLine } from "react-icons/ri";
+import { BsClockFill, BsClock } from "react-icons/bs";
 
 interface TabItem {
   path: string;
@@ -13,28 +14,16 @@ interface TabItem {
 
 const TABS: TabItem[] = [
   {
-    path: "/menu",
-    label: "Menu",
-    icon: (
-      <Icon
-        className="flex items-center justify-center"
-        icon="zi-more-grid"
-        size={28}
-      />
-    ),
-    activeIcon: (
-      <Icon
-        className="flex items-center justify-center"
-        icon="zi-more-grid-solid"
-        size={28}
-      />
-    ),
+    path: "/home",
+    label: "Bảng tin",
+    icon: <RiNewspaperLine size={28} />,
+    activeIcon: <RiNewspaperFill size={28} />,
   },
   {
     path: "/",
-    label: "Trang chủ",
-    icon: <RiHome9Line size={28} />,
-    activeIcon: <RiHome9Fill size={28} />,
+    label: "Đặt bàn",
+    icon: <BsClock size={26} />,
+    activeIcon: <BsClockFill size={26} />,
   },
   {
     path: "/account",
@@ -95,20 +84,19 @@ const TabBar = () => {
       style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)" }}
     >
       <div
-        className="mx-auto max-w-sm rounded-full border border-black/5 bg-white/25
-        py-1.5 shadow-[0_8px_24px_-6px_rgba(0,0,0,0.25)] backdrop-blur-md
-        dark:border-white/10 dark:bg-[#141415]/70"
+        className="mx-auto max-w-sm rounded-full border border-green-100/50 bg-white/70
+        py-1.5 shadow-[0_8px_32px_-8px_rgba(26,182,135,0.25)] backdrop-blur-xl
+        dark:border-green-500/20 dark:bg-slate-900/70"
       >
         <div className="relative flex items-center">
           <div
             className={`absolute left-0 top-1/2 h-[60px] rounded-full
-            transition-all dark:bg-[#52a0ff]/90 duration-300 ease-in-out`}
+            transition-all duration-300 ease-in-out bg-gradient-warm`}
             style={{
-              background: "linear-gradient(180deg, #c21a00, #000000)",
               width: `${pillWidth}px`,
               left: `calc(${activeIndex * slotWidth}% + (${slotWidth}% - ${pillWidth}px) / 2)`,
               transform: "translateY(-50%)",
-              opacity: isStretching ? 0.2 : 1,
+              opacity: isStretching ? 0.3 : 1,
             }}
           />
           {TABS.map((tab, index) => {
@@ -122,8 +110,8 @@ const TabBar = () => {
                 <div
                   className={`${
                     active
-                      ? "text-[#ff6017] dark:text-white"
-                      : "text-[#662000] dark:text-[#8f9499]"
+                      ? "text-white dark:text-white"
+                      : "text-slate-500 dark:text-slate-400"
                   } flex items-center justify-center transition-all w-10 h-10 duration-300`}
                 >
                   {active && tab.activeIcon ? tab.activeIcon : tab.icon}

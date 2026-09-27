@@ -11,7 +11,8 @@ import { AppProps } from "zmp-ui/app";
 import HomePage from "@/pages/index";
 import TabBar from "./taskbar";
 import AccountPage from "@/pages/account";
-import Menu from "@/pages/menu";
+import PlayingPage from "@/pages/playing";
+import TablesPage from "@/pages/tables";
 
 const Layout = () => {
   return (
@@ -19,9 +20,10 @@ const Layout = () => {
       <SnackbarProvider>
         <ZMPRouter>
           <AnimationRoutes>
-            <Route path="/" element={<HomePage />}></Route>
+            <Route path="/" element={<TablesPage />}></Route>
+            <Route path="/home" element={<HomePage />}></Route>
             <Route path="/account" element={<AccountPage />}></Route>
-            <Route path="/menu" element={<Menu />}></Route>
+            <Route path="/:tableId" element={<PlayingPage />}></Route>
           </AnimationRoutes>
           <TabBar />
         </ZMPRouter>
