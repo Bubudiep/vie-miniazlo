@@ -5,7 +5,13 @@ import { GiEightBall } from "react-icons/gi";
 import { RiVipCrown2Fill } from "react-icons/ri";
 import { Box, Text } from "zmp-ui";
 
-const MemberCard = () => {
+interface MemberCardProps {
+  name?: string;
+  points?: number;
+  minutes?: number | string;
+}
+
+const MemberCard = ({ name, points, minutes }: MemberCardProps) => {
   return (
     <div className="flex">
       <Box
@@ -14,7 +20,7 @@ const MemberCard = () => {
       >
         <div className="absolute flex gap-2 top-3 items-end right-4 flex-col">
           <Text size="xSmall" className="text-[#fff5] font-bold">
-            #Tên người dùng
+            #{name ?? "--"}
           </Text>
           <div
             className="flex text-[10px] items-center gap-1 
@@ -36,12 +42,12 @@ const MemberCard = () => {
         </div>
         <Box className="flex items-baseline space-x-1.5 mt-3 relative">
           <Text.Title className="text-white text-[30px] font-bold">
-            {(1000).toLocaleString("vi-VN") || "--"}
+            {points?.toLocaleString("vi-VN") ?? "--"}
           </Text.Title>
           <Text className="text-gold mb-0.5">điểm</Text>
         </Box>
         <Text size="xSmall" className="text-gray-400 mt-4 relative">
-          Thời gian: {formatMinutes(50)}
+          Thời gian: {minutes === undefined ? "--" : formatMinutes(minutes)}
         </Text>
       </Box>
     </div>

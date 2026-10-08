@@ -10,20 +10,50 @@ import logo from "@/images/logo.png";
 import { useParams, useNavigate } from "react-router-dom";
 
 const MOCK_OFFERS = [
-  { id: 1, title: "Giảm 20% đồ uống", desc: "Áp dụng từ 14h-17h", icon: "zi-star" },
-  { id: 2, title: "Tặng 1 giờ chơi", desc: "Khi nạp 5 giờ", icon: "zi-clock-1" },
+  {
+    id: 1,
+    title: "Giảm 20% đồ uống",
+    desc: "Áp dụng từ 14h-17h",
+    icon: "zi-star",
+  },
+  {
+    id: 2,
+    title: "Tặng 1 giờ chơi",
+    desc: "Khi nạp 5 giờ",
+    icon: "zi-clock-1",
+  },
   { id: 3, title: "Free snack", desc: "Cho đơn trên 200k", icon: "zi-poll" },
 ];
 
 const MOCK_MENU_HOT = [
-  { id: 1, name: "Sting dâu", price: 15000, image: "https://via.placeholder.com/80" },
-  { id: 2, name: "Bimbim", price: 10000, image: "https://via.placeholder.com/80" },
+  {
+    id: 1,
+    name: "Sting dâu",
+    price: 15000,
+    image: "https://via.placeholder.com/80",
+  },
+  {
+    id: 2,
+    name: "Bimbim",
+    price: 10000,
+    image: "https://via.placeholder.com/80",
+  },
 ];
 
 const MOCK_MENU_ALL = [
-  { id: 3, name: "Coca Cola", price: 12000, image: "https://via.placeholder.com/80" },
+  {
+    id: 3,
+    name: "Coca Cola",
+    price: 12000,
+    image: "https://via.placeholder.com/80",
+  },
   { id: 4, name: "7Up", price: 12000, image: "https://via.placeholder.com/80" },
-  { id: 5, name: "Pepsi", price: 12000, image: "https://via.placeholder.com/80" },
+  {
+    id: 5,
+    name: "Pepsi",
+    price: 12000,
+    image: "https://via.placeholder.com/80",
+  },
 ];
 
 const BILL_SERVICES = [
@@ -45,16 +75,21 @@ function PlayingPage() {
   const hoursRemaining = 3.5;
   const timeToReward = 37; // minutes
 
-  const billTotal = BILL_SERVICES.reduce((sum, service) => sum + (service.price * service.quantity), 0);
+  const billTotal = BILL_SERVICES.reduce(
+    (sum, service) => sum + service.price * service.quantity,
+    0,
+  );
 
   // Get table name from tableId
-  const tableName = tableId ? `Bàn ${tableId.replace("ban", "")}` : "Bàn không xác định";
+  const tableName = tableId
+    ? `Bàn ${tableId.replace("ban", "")}`
+    : "Bàn không xác định";
 
   return (
     <Page className="flex flex-col bg-slate-50 pb-[calc(env(safe-area-inset-bottom,0px)+96px)]">
       {/* Header */}
       <div className="bg-white border-b border-green-100 shadow-sm sticky top-0 z-10 pt-11 pb-3 px-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => navigate("/")}
             className="flex items-center justify-center w-9 h-9 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
@@ -62,14 +97,10 @@ function PlayingPage() {
             <IoArrowBack size={20} />
           </button>
           <div className="flex items-center gap-2">
-            <img src={logo} className="w-10 h-10 rounded-lg shadow-md" alt="Logo" />
             <div>
               <Text.Title className="text-[16px] font-semibold text-slate-900">
                 {tableName}
               </Text.Title>
-              <Text size="xxSmall" className="text-slate-600">
-                Xin chào, <span className="font-semibold">Hùng</span>
-              </Text>
             </div>
           </div>
           <div className="w-9"></div>
@@ -92,15 +123,18 @@ function PlayingPage() {
 
       {/* Body - Table Image */}
       <div className="px-4 pt-4">
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden border-l-4 border-green-500">
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
           <div className="relative">
             <div className="absolute inset-0 bg-gradient-to-b from-green-50/50 to-transparent opacity-60" />
             <div className="flex items-center justify-center py-8 relative">
               <div className="relative">
-                <GiEightBall size={120} className="text-green-600 opacity-20 absolute -top-4 -left-4" />
+                <GiEightBall
+                  size={120}
+                  className="text-green-600 opacity-20 absolute -top-4 -left-4"
+                />
                 <img
                   src="https://cdn-icons-png.magnific.com/512/15005/15005573.png"
-                  className="w-32 h-32 object-contain relative z-10"
+                  className="w-32 h-20 object-contain relative z-10"
                   alt="Billiard Table"
                 />
               </div>
@@ -218,7 +252,10 @@ function PlayingPage() {
                           <Text size="small" bold className="text-slate-900">
                             {item.name}
                           </Text>
-                          <Text size="xSmall" className="text-coral-600 font-semibold">
+                          <Text
+                            size="xSmall"
+                            className="text-coral-600 font-semibold"
+                          >
                             {item.price.toLocaleString("vi")}đ
                           </Text>
                         </div>
@@ -247,7 +284,10 @@ function PlayingPage() {
                           <Text size="small" className="text-slate-900">
                             {item.name}
                           </Text>
-                          <Text size="xSmall" className="text-slate-600 font-semibold">
+                          <Text
+                            size="xSmall"
+                            className="text-slate-600 font-semibold"
+                          >
                             {item.price.toLocaleString("vi")}đ
                           </Text>
                         </div>
@@ -339,11 +379,15 @@ function PlayingPage() {
                             {service.name}
                           </Text>
                           <Text size="xxSmall" className="text-slate-600">
-                            {service.price.toLocaleString("vi")}đ x {service.quantity}
+                            {service.price.toLocaleString("vi")}đ x{" "}
+                            {service.quantity}
                           </Text>
                         </div>
                         <Text className="text-slate-900 font-semibold">
-                          {(service.price * service.quantity).toLocaleString("vi")}đ
+                          {(service.price * service.quantity).toLocaleString(
+                            "vi",
+                          )}
+                          đ
                         </Text>
                       </div>
                     ))}
@@ -401,7 +445,10 @@ function PlayingPage() {
                 </div>
                 <div className="text-center space-y-2">
                   <Text className="text-slate-900 font-semibold text-[16px]">
-                    Số tiền: <span className="text-coral-600">{billTotal.toLocaleString("vi")}đ</span>
+                    Số tiền:{" "}
+                    <span className="text-coral-600">
+                      {billTotal.toLocaleString("vi")}đ
+                    </span>
                   </Text>
                   <Text size="small" className="text-slate-600">
                     Ngân hàng: MB Bank

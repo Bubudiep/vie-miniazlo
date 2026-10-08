@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Icon, useNavigate } from "zmp-ui";
 import { HiHome } from "react-icons/hi2";
-import { RiHome9Fill, RiHome9Line, RiNewspaperFill, RiNewspaperLine } from "react-icons/ri";
+import {
+  RiHome9Fill,
+  RiHome9Line,
+  RiNewspaperFill,
+  RiNewspaperLine,
+} from "react-icons/ri";
 import { BsClockFill, BsClock } from "react-icons/bs";
 
 interface TabItem {
@@ -91,7 +96,8 @@ const TabBar = () => {
         <div className="relative flex items-center">
           <div
             className={`absolute left-0 top-1/2 h-[60px] rounded-full
-            transition-all duration-300 ease-in-out bg-gradient-warm`}
+            transition-all duration-300 ease-in-out bg-gradient-to-b from-orange-400 to-orange-600 
+            shadow-[0_4px_12px_-2px_rgba(26,182,135,0.5)]`}
             style={{
               width: `${pillWidth}px`,
               left: `calc(${activeIndex * slotWidth}% + (${slotWidth}% - ${pillWidth}px) / 2)`,

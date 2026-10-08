@@ -18,11 +18,25 @@ interface TableInfo {
 }
 
 const MOCK_TABLES: TableInfo[] = [
-  { id: "ban1", name: "Bàn 1", status: "playing", currentUser: "Hùng", timeRemaining: 210, price: 60000 },
+  {
+    id: "ban1",
+    name: "Bàn 1",
+    status: "playing",
+    currentUser: "Hùng",
+    timeRemaining: 210,
+    price: 60000,
+  },
   { id: "ban2", name: "Bàn 2", status: "available", price: 60000 },
   { id: "ban3", name: "Bàn 3", status: "reserved", price: 60000 },
   { id: "ban4", name: "Bàn 4", status: "available", price: 60000 },
-  { id: "ban5", name: "Bàn 5", status: "playing", currentUser: "Minh", timeRemaining: 120, price: 70000 },
+  {
+    id: "ban5",
+    name: "Bàn 5",
+    status: "playing",
+    currentUser: "Minh",
+    timeRemaining: 120,
+    price: 70000,
+  },
   { id: "ban6", name: "Bàn 6", status: "available", price: 70000 },
   { id: "ban7", name: "Bàn 7", status: "available", price: 70000 },
 ];
@@ -86,86 +100,93 @@ function TablesPage() {
 
   return (
     <Page className="flex flex-col gap-4 bg-slate-50 pb-[calc(env(safe-area-inset-bottom,0px)+96px)]">
-      {/* Header */}
-      <div className="flex items-center rounded-b-2xl sticky top-0 border-b border-green-100 pb-2 shadow-sm z-10 bg-white/80 backdrop-blur-md justify-between px-4 pt-11">
+      <div className="flex items-center rounded-b-2xl sticky top-0 border-b border-orange-100 pb-2 shadow-sm z-10 bg-white/80 backdrop-blur-md justify-between px-4 pt-11">
         <div className="flex flex-col">
           <div className="flex gap-2 items-center">
             <img src={logo} className="w-10 h-10 shadow-md rounded-lg" />
             <div className="flex flex-col">
               <div className="flex font-semibold items-start text-[20px] text-slate-900">
-                Tình trạng bàn{" "}
-                <div className="flex text-green-500 ml-1">
+                CULI BILLIARDS CLUB
+                <div className="flex text-orange-500 ml-1">
                   <TbRosetteDiscountCheckFilled size={15} />
                 </div>
               </div>
-              <div className="flex text-[13px] text-slate-600">CULI BILLIARDS CLUB</div>
+              <div className="flex text-[13px] text-slate-600">
+                Thể thao giải trí đỉnh cao
+              </div>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Status Legend */}
       <div className="px-4">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
-          <Text.Title size="small" className="text-slate-900 mb-3">
-            Chú thích
-          </Text.Title>
           <div className="grid grid-cols-3 gap-2">
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-green-500"></div>
-              <Text size="xSmall" className="text-slate-700">Trống</Text>
+              <div className="w-3 h-3 rounded-full bg-green-500"></div>
+              <Text size="xSmall" className="text-slate-700">
+                Trống
+              </Text>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-coral-500"></div>
-              <Text size="xSmall" className="text-slate-700">Đang chơi</Text>
+              <div className="w-3 h-3 rounded-full bg-coral-500"></div>
+              <Text size="xSmall" className="text-slate-700">
+                Đang chơi
+              </Text>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-yellow-500"></div>
-              <Text size="xSmall" className="text-slate-700">Đã đặt</Text>
+              <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+              <Text size="xSmall" className="text-slate-700">
+                Đã đặt
+              </Text>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Tables Grid - Pool Table Layout */}
-      <div className="px-4 flex gap-2">
-        {/* Left Column - 3 tables (bottom to top: Bàn 1, 2, 3) */}
-        <div className="flex-1 space-y-3 flex flex-col-reverse">
-          {MOCK_TABLES.slice(0, 3).map((table) => (
+      <div className="px-4 flex gap-3">
+        <div className="flex-1 gap-4 flex flex-col-reverse">
+          {MOCK_TABLES.slice(3, 7).map((table) => (
             <button
               key={table.id}
               onClick={() => handleTableClick(table)}
-              disabled={table.status === "playing" || table.status === "reserved"}
-              className={`w-full aspect-[3/2] rounded-2xl overflow-hidden transition-all relative shadow-md ${
-                table.status === "available" ? "hover:shadow-lg active:scale-98" : ""
-              }`}
-              style={{
-                backgroundImage: `url(${getTableImage(table.status)})`,
-                backgroundSize: 'contain',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
-              }}
+              disabled={
+                table.status === "playing" || table.status === "reserved"
+              }
+              className={`w-full py-4 pt-2 shadow-md bg-white rounded-2xl 
+                overflow-hidden transition-all relative ${
+                  table.status === "available"
+                    ? "active:scale-98"
+                    : "opacity-50 cursor-not-allowed"
+                }`}
             >
-              {/* Table info overlay */}
-              <div className="absolute inset-0 flex items-center justify-center p-3 text-white z-10">
-                <div className="flex items-center gap-3">
-                  <GiEightBall size={40} className="drop-shadow-lg flex-shrink-0" />
-                  <div className="flex flex-col">
-                    <Text.Title className="font-bold text-[18px] drop-shadow-lg">
-                      {table.name}
-                    </Text.Title>
-                    <Text size="xxSmall" className="font-semibold drop-shadow-lg">
-                      {getStatusText(table.status)}
-                    </Text>
+              <div className="flex justify-between items-center px-3 pb-2">
+                <Text size="xxSmall" className="font-semibold drop-shadow-lg">
+                  {getStatusText(table.status)}
+                </Text>
+                <Text.Title className="text-slate-600 text-[15px] font-medium">
+                  {table.name}
+                </Text.Title>
+              </div>
+              <div className="flex relativez-10 justify-center relative -my-1.5">
+                <img src={getTableImage(table.status)} className="w-[80%]" />
+                <div className="absolute inset-0 flex items-center justify-center p-3 text-white z-10">
+                  <div className="flex items-center gap-3">
                     {table.status === "playing" && table.timeRemaining && (
-                      <Text size="xSmall" className="font-bold drop-shadow-lg">
-                        {Math.floor(table.timeRemaining / 60)}h {table.timeRemaining % 60}m
-                      </Text>
+                      <div className="flex flex-col rounded-md bg-[#0007] px-2 py-1">
+                        <Text
+                          size="xSmall"
+                          className="font-bold drop-shadow-lg"
+                        >
+                          {Math.floor(table.timeRemaining / 60)}h{" "}
+                          {table.timeRemaining % 60}m
+                        </Text>
+                      </div>
                     )}
                     {table.status === "available" && (
-                      <Text size="xxSmall" className="drop-shadow-lg">
-                        {table.price.toLocaleString("vi")}đ/giờ
-                      </Text>
+                      <div className="flex flex-col rounded-md bg-[#0007] px-2 py-1">
+                        <Text size="xxSmall" className="drop-shadow-lg">
+                          {table.price.toLocaleString("vi")}đ/giờ
+                        </Text>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -173,44 +194,50 @@ function TablesPage() {
             </button>
           ))}
         </div>
-
-        {/* Right Column - 4 tables (bottom to top: Bàn 4, 5, 6, 7) */}
-        <div className="flex-1 space-y-3 flex flex-col-reverse">
-          {MOCK_TABLES.slice(3, 7).map((table) => (
+        <div className="flex-1 gap-4 flex flex-col-reverse h-full items-center justify-center">
+          {MOCK_TABLES.slice(0, 3).map((table) => (
             <button
               key={table.id}
               onClick={() => handleTableClick(table)}
-              disabled={table.status === "playing" || table.status === "reserved"}
-              className={`w-full aspect-[3/2] rounded-2xl overflow-hidden transition-all relative shadow-md ${
-                table.status === "available" ? "hover:shadow-lg active:scale-98" : ""
-              }`}
-              style={{
-                backgroundImage: `url(${getTableImage(table.status)})`,
-                backgroundSize: 'contain',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
-              }}
+              disabled={
+                table.status === "playing" || table.status === "reserved"
+              }
+              className={`w-full py-4 pt-2 shadow-md bg-white rounded-2xl 
+                overflow-hidden transition-all relative ${
+                  table.status === "available"
+                    ? "active:scale-98"
+                    : "opacity-50 cursor-not-allowed"
+                }`}
             >
-              {/* Table info overlay */}
-              <div className="absolute inset-0 flex items-center justify-center p-3 text-white z-10">
-                <div className="flex items-center gap-3">
-                  <GiEightBall size={40} className="drop-shadow-lg flex-shrink-0" />
-                  <div className="flex flex-col">
-                    <Text.Title className="font-bold text-[18px] drop-shadow-lg">
-                      {table.name}
-                    </Text.Title>
-                    <Text size="xxSmall" className="font-semibold drop-shadow-lg">
-                      {getStatusText(table.status)}
-                    </Text>
+              <div className="flex justify-between items-center px-3 pb-2">
+                <Text size="xxSmall" className="font-semibold drop-shadow-lg">
+                  {getStatusText(table.status)}
+                </Text>
+                <Text.Title className="text-slate-600 text-[15px] font-medium">
+                  {table.name}
+                </Text.Title>
+              </div>
+              <div className="flex relativez-10 justify-center relative -my-1.5">
+                <img src={getTableImage(table.status)} className="w-[80%]" />
+                <div className="absolute inset-0 flex items-center justify-center p-3 text-white z-10">
+                  <div className="flex items-center gap-3">
                     {table.status === "playing" && table.timeRemaining && (
-                      <Text size="xSmall" className="font-bold drop-shadow-lg">
-                        {Math.floor(table.timeRemaining / 60)}h {table.timeRemaining % 60}m
-                      </Text>
+                      <div className="flex flex-col rounded-md bg-[#0007] px-2 py-1">
+                        <Text
+                          size="xSmall"
+                          className="font-bold drop-shadow-lg"
+                        >
+                          {Math.floor(table.timeRemaining / 60)}h{" "}
+                          {table.timeRemaining % 60}m
+                        </Text>
+                      </div>
                     )}
                     {table.status === "available" && (
-                      <Text size="xxSmall" className="drop-shadow-lg">
-                        {table.price.toLocaleString("vi")}đ/giờ
-                      </Text>
+                      <div className="flex flex-col rounded-md bg-[#0007] px-2 py-1">
+                        <Text size="xxSmall" className="drop-shadow-lg">
+                          {table.price.toLocaleString("vi")}đ/giờ
+                        </Text>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -222,14 +249,15 @@ function TablesPage() {
 
       {/* Info Banner */}
       <div className="px-4 pb-4">
-        <div className="bg-gradient-to-br from-green-50 to-coral-50 rounded-2xl p-4 border-2 border-green-200 shadow-sm">
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
           <Text.Title size="small" className="text-slate-900 font-bold mb-2">
             💡 Hướng dẫn
           </Text.Title>
           <Text size="xSmall" className="text-slate-700 leading-relaxed">
-            • Bàn trống: Nhấn để đặt bàn (yêu cầu đăng nhập)<br/>
-            • Đang chơi: Xem thông tin, không thể tương tác<br/>
-            • Quét mã QR trên bàn để bắt đầu chơi ngay
+            • Bàn trống: Nhấn để đặt bàn (yêu cầu đăng nhập)
+            <br />
+            • Đang chơi: Xem thông tin, không thể tương tác
+            <br />• Quét mã QR trên bàn để bắt đầu chơi ngay
           </Text>
         </div>
       </div>
