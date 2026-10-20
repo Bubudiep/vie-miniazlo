@@ -22,40 +22,37 @@ const Table = () => {
     <>
       {tableUsing?.id ? (
         <div className="flex p-4 pt-0" onClick={() => setTableOption(true)}>
-          <div className="flex flex-col rounded-2xl overflow-hidden shadow-sm bg-[#270601] text-white w-full">
-            <div className="bg-[#270601] border-black flex justify-between items-center p-2 text-[18px]">
-              <div className="font-bold items-center gap-1 flex">
-                <GoDotFill className="text-orange-100" /> Bàn {tableUsing?.id}
+          <div className="flex flex-col rounded-2xl overflow-hidden shadow-lg border-l-4 border-green-500 bg-white w-full">
+            <div className="bg-green-50 border-b border-green-100 flex justify-between items-center p-3 text-[18px]">
+              <div className="font-bold items-center gap-1 flex text-slate-800">
+                <GoDotFill className="text-green-500" /> Bàn {tableUsing?.id}
               </div>
-              <div className="flex items-center gap-1 text-orange-500 font-medium">
+              <div className="flex items-center gap-1 text-coral-600 font-bold">
                 {(80000).toLocaleString()} VNĐ
               </div>
             </div>
             <div
-              style={{
-                background: "linear-gradient(180deg, #270601, #000000)",
-              }}
-              className="flex text-[48px] font-bold text-slate-50 justify-center border-black border-b items-center p-6 pt-4 w-full"
+              className="flex text-[52px] font-bold text-green-600 justify-center border-b border-slate-100 items-center p-6 pt-5 w-full bg-gradient-to-b from-white to-green-50/30"
             >
               {formatElapsedClock(tableUsing.startTime.toString())}
             </div>
-            <div className="flex flex-col p-2 pt-1 bg-black text-gray-300">
-              <div className="border-b border-[#fff4] mb-2" />
+            <div className="flex flex-col p-3 pt-2 bg-slate-50 text-slate-700">
+              <div className="border-b border-slate-200 mb-2" />
               <table className="w-full">
                 <tbody>
                   <tr>
-                    <td className="w-[50%]">Bimbim</td>
-                    <td className="text-right">x1</td>
-                    <td className="text-left text-gray-400">pcs</td>
-                    <td className="text-right">
+                    <td className="w-[50%] font-medium">Bimbim</td>
+                    <td className="text-right text-slate-600">x1</td>
+                    <td className="text-left text-slate-500 text-sm">pcs</td>
+                    <td className="text-right font-semibold">
                       {(20000).toLocaleString("vi")}
                     </td>
                   </tr>
                   <tr>
-                    <td>Bàn</td>
-                    <td className="text-right">x1</td>
-                    <td className="text-left text-gray-400">giờ</td>
-                    <td className="text-right">
+                    <td className="font-medium">Bàn</td>
+                    <td className="text-right text-slate-600">x1</td>
+                    <td className="text-left text-slate-500 text-sm">giờ</td>
+                    <td className="text-right font-semibold">
                       {(60000).toLocaleString("vi")}
                     </td>
                   </tr>
@@ -65,84 +62,84 @@ const Table = () => {
           </div>
         </div>
       ) : (
-        <div className="space-y-3 border-b pt-4 border-t border-black/5 rounded-t-2xl pb-5 dark:border-white/10">
+        <div className="space-y-3 border-b pt-4 border-t border-slate-200 rounded-t-2xl pb-5 dark:border-white/10">
           <div className="flex justify-between px-4 items-center pb-2">
-            <div className="text-[15px] font-medium">Danh sách bàn</div>
+            <div className="text-[16px] font-semibold text-slate-800">Danh sách bàn</div>
             <div
               className="flex"
               onClick={() =>
                 setTableUsing({ id: 1, startTime: dayjs(new Date()) })
               }
             >
-              <RiAppsFill size={20} className="text-gray-500" />
+              <RiAppsFill size={20} className="text-slate-500" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 px-4">
-            <div className="flex border rounded-xl flex-col">
+            <div className="flex border-2 border-green-200 rounded-xl flex-col bg-green-50/30 hover:bg-green-50 transition-colors">
               <div className="flex w-full items-center justify-center">
-                <div className="flex w-20 overflow-hidden py-1 pb-4 opacity-60">
+                <div className="flex w-20 overflow-hidden py-1 pb-4 opacity-50">
                   <img
                     src="https://cdn-icons-png.magnific.com/512/15005/15005573.png"
                     className="object-cover"
                   />
                 </div>
               </div>
-              <div className="flex flex-col p-2 border-t">
-                <div className="font-bold text-slate-600">BÀN 1</div>
-                <div className="text-blue-500 flex gap-1 items-center font-medium text-[13px]">
+              <div className="flex flex-col p-2 border-t border-green-200 bg-white">
+                <div className="font-bold text-slate-700">BÀN 1</div>
+                <div className="text-green-600 flex gap-1 items-center font-semibold text-[13px]">
                   <GoDotFill />
-                  Sãn sàng
+                  Sẵn sàng
                 </div>
               </div>
             </div>
-            <div className="flex border rounded-xl flex-col">
+            <div className="flex border-2 border-green-200 rounded-xl flex-col bg-green-50/30 hover:bg-green-50 transition-colors">
               <div className="flex w-full items-center justify-center">
-                <div className="flex w-20 overflow-hidden py-1 pb-4 opacity-60">
+                <div className="flex w-20 overflow-hidden py-1 pb-4 opacity-50">
                   <img
                     src="https://cdn-icons-png.magnific.com/512/15005/15005573.png"
                     className="object-cover"
                   />
                 </div>
               </div>
-              <div className="flex flex-col p-2 border-t">
-                <div className="font-bold text-slate-600">BÀN 2</div>
-                <div className="text-blue-500 flex gap-1 items-center font-medium text-[13px]">
+              <div className="flex flex-col p-2 border-t border-green-200 bg-white">
+                <div className="font-bold text-slate-700">BÀN 2</div>
+                <div className="text-green-600 flex gap-1 items-center font-semibold text-[13px]">
                   <GoDotFill />
-                  Sãn sàng
+                  Sẵn sàng
                 </div>
               </div>
             </div>
-            <div className="flex border rounded-xl flex-col">
+            <div className="flex border-2 border-green-200 rounded-xl flex-col bg-green-50/30 hover:bg-green-50 transition-colors">
               <div className="flex w-full items-center justify-center">
-                <div className="flex w-20 overflow-hidden py-1 pb-4 opacity-60">
+                <div className="flex w-20 overflow-hidden py-1 pb-4 opacity-50">
                   <img
                     src="https://cdn-icons-png.magnific.com/512/15005/15005573.png"
                     className="object-cover"
                   />
                 </div>
               </div>
-              <div className="flex flex-col p-2 border-t">
-                <div className="font-bold text-slate-600">BÀN 3</div>
-                <div className="text-blue-500 flex gap-1 items-center font-medium text-[13px]">
+              <div className="flex flex-col p-2 border-t border-green-200 bg-white">
+                <div className="font-bold text-slate-700">BÀN 3</div>
+                <div className="text-green-600 flex gap-1 items-center font-semibold text-[13px]">
                   <GoDotFill />
-                  Sãn sàng
+                  Sẵn sàng
                 </div>
               </div>
             </div>
-            <div className="flex border rounded-xl flex-col">
+            <div className="flex border-2 border-green-200 rounded-xl flex-col bg-green-50/30 hover:bg-green-50 transition-colors">
               <div className="flex w-full items-center justify-center">
-                <div className="flex w-20 overflow-hidden py-1 pb-4 opacity-60">
+                <div className="flex w-20 overflow-hidden py-1 pb-4 opacity-50">
                   <img
                     src="https://cdn-icons-png.magnific.com/512/15005/15005573.png"
                     className="object-cover"
                   />
                 </div>
               </div>
-              <div className="flex flex-col p-2 border-t">
-                <div className="font-bold text-slate-600">BÀN 4</div>
-                <div className="text-blue-500 flex gap-1 items-center font-medium text-[13px]">
+              <div className="flex flex-col p-2 border-t border-green-200 bg-white">
+                <div className="font-bold text-slate-700">BÀN 4</div>
+                <div className="text-green-600 flex gap-1 items-center font-semibold text-[13px]">
                   <GoDotFill />
-                  Sãn sàng
+                  Sẵn sàng
                 </div>
               </div>
             </div>

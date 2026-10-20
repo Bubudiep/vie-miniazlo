@@ -10,6 +10,14 @@
     "hideIOSSafeAreaBottom": true,
     "hideAndroidBottomNavigationBar": false
   },
+  "permission": {
+    "scope.userInfo": {
+      "reason": "Ứng dụng cần truy cập thông tin của bạn để đăng nhập"
+    },
+    "scope.userPhonenumber": {
+      "reason": "Ứng dụng cần số điện thoại để liên hệ khi cần thiết"
+    }
+  },
   "listCSS": [],
   "listSyncJS": [],
   "listAsyncJS": []

@@ -1,48 +1,32 @@
-# Zalo Mini App
+# H2 Billiards Web App
 
-# thử nghiệm push
+Ứng dụng React chạy trên trình duyệt thông thường, dùng PocketBase để đăng nhập và lưu dữ liệu. Không cần mở trong Zalo Mini App.
 
-## Development
+## Chạy local
 
-### Using Zalo Mini App Extension
+```powershell
+cd "D:\My App\billiard"
+.\scripts\start-dev-backend.ps1
+cd vie-minizalo
+npm install
+npm run dev
+```
 
-1. Install [Visual Studio Code](https://code.visualstudio.com/download) and [Zalo Mini App Extension](https://mini.zalo.me/docs/dev-tools).
-1. In the **Home** tab, process **Config App ID** and **Install Dependencies**.
-1. Navigate to the **Run** tab, select the suitable launcher, and click **Start**.
+PocketBase chạy tại `http://127.0.0.1:8390` (Admin UI: `http://127.0.0.1:8390/_/`). Nếu PocketBase **đã chạy** trước khi cập nhật, dừng tiến trình hiện có rồi khởi động lại để áp dụng migration trong `pocketbase/pb_migrations/` và nạp hooks; script `start-dev-backend.ps1` sẽ không tự khởi động lại một server đang chạy. Mở URL Vite in ra, thường là `http://localhost:5173`. Frontend mặc định kết nối PocketBase local qua `src/api/pocketbase.ts`, không cần ngrok hay Zalo App ID.
 
-### Using Zalo Mini App CLI
+Nếu cần thay đổi địa chỉ backend, đặt `VITE_API_BASE_URL` trong `.env` trước khi chạy/build. `127.0.0.1` chỉ dùng được khi trình duyệt và PocketBase chạy trên cùng máy; thiết bị khác cần một địa chỉ mạng truy cập được và cấu hình PocketBase lắng nghe trên mạng đó.
 
-1. [Install Node JS](https://nodejs.org/en/download/).
-1. [Install Zalo Mini App CLI](https://mini.zalo.me/docs/dev-tools/cli/intro/).
-1. **Install dependencies**:
-   ```bash
-   npm install
-   ```
-1. **Start** the dev server:
-   ```bash
-   zmp start
-   ```
-1. **Open** `localhost:3000` in your browser.
+## Build và triển khai
 
-## Deployment
+```powershell
+npm run build
+npm run preview
+```
 
-1. **Create** a mini program. For instructions on how to create a mini program, please refer to the [Coffee Shop Tutorial](https://mini.zalo.me/tutorial/coffee-shop/step-1/)
+Build tạo thư mục `dist/`. Triển khai nội dung thư mục này lên dịch vụ web tĩnh và bật SPA fallback về `index.html` để các đường dẫn như `/account` hoạt động khi tải lại trang. Cấu hình `VITE_API_BASE_URL` trước khi build.
 
-1. **Deploy** your mini program to Zalo using the mini app ID created.
-   - **Using Zalo Mini App Extension**: navigate to the **Deploy** panel > **Login** > **Deploy**.
-   - **Using Zalo Mini App CLI**:
-     ```bash
-     zmp login
-     zmp deploy
-     ```
+## Đăng ký và phê duyệt
 
-1. Open the mini app in Zalo by scanning the QR code.
+Người dùng chọn cửa hàng, nhập họ tên (`fullname`), số điện thoại và mật khẩu để tự đăng ký. Mặc định tài khoản được duyệt ngay nên có thể đăng nhập sau khi đăng ký. Admin cửa hàng có thể mở **Tài khoản → Duyệt tài khoản** để bật yêu cầu phê duyệt cho người đăng ký *mới* vào cửa hàng mình, xem danh sách chờ và duyệt từng người. Bật chế độ này không thu hồi quyền đăng nhập của tài khoản đã được duyệt trước đó. Tài khoản cũ có thể chưa có họ tên hoặc số điện thoại; superuser có thể bổ sung trong PocketBase Admin UI.
 
-## Resources
-
-- [Zalo Mini App Official Website](https://mini.zalo.me/)
-- [ZaUI Documentation](https://mini.zalo.me/documents/zaui/)
-- [ZMP SDK Documentation](https://mini.zalo.me/documents/api/)
-- [DevTools Documentation](https://mini.zalo.me/docs/dev-tools/)
-- [Ready-made Mini App Templates](https://mini.zalo.me/zaui-templates)
-- [Community Support](https://mini.zalo.me/community)
+Admin cần có `role=admin` và được gắn đúng `store` trong collection `users` (superuser thiết lập ban đầu qua Admin UI). Không đặt quyền admin hoặc trạng thái duyệt từ frontend.

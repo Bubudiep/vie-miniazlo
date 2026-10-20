@@ -2,14 +2,12 @@ import { useSetAtom } from "jotai";
 import type { MouseEvent } from "react";
 import { Icon, Text, useSnackbar } from "zmp-ui";
 
-import { Product, Product2 } from "@/mock/products";
+import type { Product } from "@/api/pocketbase";
 import { formatCurrency } from "@/utils/format";
 
-function ProductCard({ product }: { product: Product2 }) {
+function ProductCard({ product }: { product: Product }) {
   const { openSnackbar } = useSnackbar();
-  const discountPercent = product.originalPrice
-    ? Math.round(100 - (product.price / product.originalPrice) * 100)
-    : undefined;
+
   return (
     <div className="overflow-hidden rounded-2xl border border-black/10 dark:border-white/10">
       <div className="relative flex aspect-square items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-[#2a2a2c] dark:to-[#1c1c1e]">
@@ -25,16 +23,11 @@ function ProductCard({ product }: { product: Product2 }) {
             className="text-slate-300 dark:text-white/20"
           />
         )}
-        {discountPercent ? (
-          <span className="absolute left-2 top-2 rounded-full bg-[#dc1f18] px-2 py-0.5 text-[11px] font-semibold text-white">
-            -{discountPercent}%
-          </span>
-        ) : null}
-        {product.badge ? (
+        {product.category && (
           <span className="absolute right-2 top-2 rounded-full bg-[#006af5] px-2 py-0.5 text-[11px] font-semibold text-white">
-            {product.badge}
+            {product.category}
           </span>
-        ) : null}
+        )}
       </div>
       <div className="space-y-1 p-2.5">
         <Text
@@ -47,24 +40,19 @@ function ProductCard({ product }: { product: Product2 }) {
           <div className="min-w-0">
             <div className="flex items-baseline gap-1.5">
               <Text size="small" bold className="text-[#dc1f18]">
-                {formatCurrency(product.price)}
+                {formatCurrency(product.price)}{product.billing_unit === 'hour' ? '/giờ' : `/${product.unit_label || (product.billing_unit === 'weight' ? 'kg' : 'lần')}`}
               </Text>
-              {product.originalPrice ? (
-                <Text size="xxSmall" className="text-[#b9bdc1] line-through">
-                  {formatCurrency(product.originalPrice)}
-                </Text>
-              ) : null}
             </div>
-            {product.sold ? (
-              <Text
-                size="xxSmall"
-                className="text-[#767a7f] dark:text-[#8f9499]"
-              >
-                Đã bán {product.sold}
-              </Text>
-            ) : null}
           </div>
         </div>
+        {product.description && (
+          <Text
+            size="xxSmall"
+            className="text-[#767a7f] dark:text-[#8f9499] line-clamp-2"
+          >
+            {product.description}
+          </Text>
+        )}
       </div>
     </div>
   );

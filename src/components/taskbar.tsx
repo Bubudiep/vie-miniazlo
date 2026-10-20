@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
-import { Icon, useNavigate } from "zmp-ui";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Icon } from "zmp-ui";
 import { HiHome } from "react-icons/hi2";
 import {
+  RiLayoutGridFill,
+  RiLayoutGridLine,
   RiHome9Fill,
   RiHome9Line,
   RiNewspaperFill,
   RiNewspaperLine,
 } from "react-icons/ri";
-import { BsClockFill, BsClock } from "react-icons/bs";
 
 interface TabItem {
   path: string;
@@ -27,8 +28,8 @@ const TABS: TabItem[] = [
   {
     path: "/",
     label: "Đặt bàn",
-    icon: <BsClock size={26} />,
-    activeIcon: <BsClockFill size={26} />,
+    icon: <RiLayoutGridLine size={28} />,
+    activeIcon: <RiLayoutGridFill size={28} />,
   },
   {
     path: "/account",
@@ -72,13 +73,10 @@ const TabBar = () => {
 
   const handleNavigate = (path: string, index: number) => {
     if (index === activeIndex) return;
-    navigate(path, {
-      animate: true,
-      direction: index > activeIndex ? "forward" : "backward",
-    });
+    navigate(path);
   };
 
-  if (location.pathname === "/cart") return null;
+  if (location.pathname === "/cart" || location.pathname === "/login") return null;
 
   const slotWidth = 100 / TABS.length;
   const pillWidth = isStretching ? PILL_STRETCH_WIDTH : PILL_REST_WIDTH;

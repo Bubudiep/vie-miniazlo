@@ -2,9 +2,15 @@
   "name": "bida-app",
   "private": true,
   "version": "1.0.0",
-  "description": "zmp-blank-templates",
+  "description": "H2 Billiards Web App",
   "repository": "",
   "license": "UNLICENSED",
+  "scripts": {
+    "start": "vite --host 0.0.0.0",
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
   "browserslist": [
     "Android >= 5",
     "IOS >= 9.3",
@@ -14,19 +20,15 @@
     "Firefox >= 31",
     "Samsung >= 5"
   ],
-  "scripts": {
-    "login": "zmp login",
-    "start": "zmp start",
-    "deploy": "zmp deploy"
-  },
   "dependencies": {
     "axios": "^1.20.0",
     "dayjs": "^1.11.23",
     "jotai": "^2.12.1",
+    "pocketbase": "^0.28.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-icons": "^5.7.0",
-    "zmp-sdk": "latest",
+    "react-router-dom": "^6.30.6",
     "zmp-ui": "latest"
   },
   "devDependencies": {
@@ -40,7 +42,6 @@
     "postcss-preset-env": "^6.7.0",
     "sass": "^1.76.0",
     "tailwindcss": "^3.4.3",
-    "vite": "^5.2.13",
-    "zmp-vite-plugin": "latest"
+    "vite": "^5.2.13"
   }
 }

@@ -1,6 +1,6 @@
 import { Box, Icon, Page, Text } from "zmp-ui";
 import logo from "@/images/logo.png";
-import { TbRosetteDiscountCheckFilled } from "react-icons/tb";
+import StoreHeader from "@/components/store-header";
 import { formatDateTime } from "@/utils/format";
 import { IoMdHeart, IoMdChatbubbles } from "react-icons/io";
 import { FaFire } from "react-icons/fa";
@@ -8,7 +8,7 @@ import { FaFire } from "react-icons/fa";
 const NEWS_POSTS = [
   {
     id: 1,
-    author: "CULI BILLIARDS CLUB",
+    author: "H2 BILLIARDS",
     time: "2 giờ trước",
     content:
       "🎉 Chương trình ưu đãi tháng 9: Giảm 20% toàn bộ đồ uống từ 14h-17h hàng ngày! Nhanh tay đặt bàn ngay nhé các bạn ơi!",
@@ -28,7 +28,7 @@ const NEWS_POSTS = [
   },
   {
     id: 3,
-    author: "CULI BILLIARDS CLUB",
+    author: "H2 BILLIARDS",
     time: "1 ngày trước",
     content:
       "🔥 HOT: Nạp 5 giờ tặng ngay 1 giờ chơi + 1 nước ngọt miễn phí. Áp dụng cho thành viên mới và khách hàng thân thiết!",
@@ -41,7 +41,7 @@ const NEWS_POSTS = [
     author: "Admin",
     time: "2 ngày trước",
     content:
-      "Cảm ơn các bạn đã ủng hộ CULI trong suốt thời gian qua! 💚 Chúng mình cam kết mang đến trải nghiệm chơi bi-a tốt nhất cho mọi người!",
+      "Cảm ơn các bạn đã ủng hộ H2 Billiards trong suốt thời gian qua! 💚 Chúng mình cam kết mang đến trải nghiệm chơi bi-a tốt nhất cho mọi người!",
     image: null,
     likes: 156,
     comments: 32,
@@ -51,27 +51,7 @@ const NEWS_POSTS = [
 function HomePage() {
   return (
     <Page className="flex flex-col gap-4 bg-slate-50 pb-[calc(env(safe-area-inset-bottom,0px)+96px)] dark:bg-black">
-      <div
-        className="flex items-center rounded-b-2xl sticky top-0 border-b border-green-100 pb-2 shadow-sm z-10 bg-white/80 backdrop-blur-md
-        justify-between px-4 pt-11"
-      >
-        <div className="flex flex-col">
-          <div className="flex gap-2 items-center">
-            <img src={logo} className="w-10 h-10 shadow-md rounded-lg" />
-            <div className="flex flex-col">
-              <div className="flex font-semibold items-start text-[20px] text-slate-900">
-                Bảng tin{" "}
-                <div className="flex text-green-500 ml-1">
-                  <TbRosetteDiscountCheckFilled size={15} />
-                </div>
-              </div>
-              <div className="flex text-[13px] text-slate-600">
-                CULI BILLIARDS CLUB
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <StoreHeader />
       <div className="px-4 space-y-4">
         {NEWS_POSTS.map((post) => (
           <div

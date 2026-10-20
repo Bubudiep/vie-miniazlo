@@ -11,16 +11,6 @@ import { createRoot } from "react-dom/client";
 
 // Mount the app
 import Layout from "@/components/layout";
-import { restoreSession } from "@/state/auth";
-
-// Expose app configuration
-import appConfig from "../app-config.json";
-
-if (!window.APP_CONFIG) {
-  window.APP_CONFIG = appConfig as any;
-}
-
-restoreSession();
 
 const root = createRoot(document.getElementById("app")!);
 root.render(React.createElement(Layout));
