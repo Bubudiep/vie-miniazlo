@@ -7,6 +7,10 @@ const apiBaseUrl = (
 const pb = new PocketBase(apiBaseUrl);
 
 pb.autoCancellation(false);
+pb.afterSend = (response, data) => {
+  if (response.status === 401 && pb.authStore.token) pb.authStore.clear();
+  return data;
+};
 
 export default pb;
 
@@ -19,6 +23,22 @@ export interface Store {
   email?: string;
   created: string;
   updated: string;
+}
+
+export interface BillPaymentSettings {
+  bankId: string;
+  accountNumber: string;
+  accountName: string;
+}
+
+export interface AdminNotification {
+  id: string;
+  type: "table_bill_wallet" | "table_bill_transfer";
+  title: string;
+  body: string;
+  referenceType: string;
+  referenceId: string;
+  created: string;
 }
 
 export interface User {
@@ -36,21 +56,54 @@ export interface User {
   updated: string;
 }
 
+export interface ProductTimePeriod {
+  price: number;
+  durationMinutes: number;
+}
+
+export interface ProductSpecialPeriod {
+  name: string;
+  price: number;
+  durationMinutes?: number;
+  allDay: boolean;
+  startTime: string;
+  endTime: string;
+  weekdays: number[];
+}
+
+export interface ProductTimePricing {
+  intervalMinutes: number;
+  firstPeriod: ProductTimePeriod | null;
+  specialPeriod: ProductSpecialPeriod | null;
+}
+
+export interface ProductCategory {
+  id: string;
+  store: string;
+  name: string;
+  created: string;
+  updated: string;
+}
+
 export interface Product {
   id: string;
   store: string;
   name: string;
   description?: string;
   price: number;
+  purchase_price?: number;
   kind: 'goods' | 'food' | 'drink' | 'service';
   category?: string;
   billing_unit: 'hour' | 'quantity' | 'weight';
   unit_label?: string;
+  time_pricing?: ProductTimePricing | null;
   image?: string;
   is_active: boolean;
   created: string;
   updated: string;
 }
+
+export type ProductInput = Omit<Partial<Product>, "image"> & { image?: string | File };
 
 export interface Table {
   id: string;
@@ -92,7 +145,29 @@ export interface TableBillItem {
   unitPrice: number;
   quantity: number;
   startedAt: string;
+  stoppedAt?: string;
   lineTotal: number;
+  timePricing?: ProductTimePricing | null;
+  timeBreakdown?: { type: 'first' | 'regular' | 'special'; label: string; startAt: string; endAt: string; durationMinutes: number; billedDurationMinutes: number; amount: number }[];
+}
+
+export interface TableBillSessionItem {
+  id: string;
+  tableName: string;
+  status: 'open' | 'wallet_pending' | 'stopped' | 'paid' | 'cancelled';
+  paymentMethod: '' | 'cash' | 'transfer' | 'wallet';
+  totalAmount: number;
+  paymentRequested: boolean;
+  startedAt: string;
+  stoppedAt: string;
+  paidAt: string;
+}
+
+export interface TableBillSessionSummary {
+  sessionId: string;
+  bills: TableBillSessionItem[];
+  totalAmount: number;
+  outstandingAmount: number;
 }
 
 export interface TableBill {
@@ -100,20 +175,144 @@ export interface TableBill {
   table: string;
   tableName: string;
   customer: string;
-  status: 'open' | 'wallet_pending' | 'paid' | 'cancelled';
+  status: 'open' | 'wallet_pending' | 'stopped' | 'paid' | 'cancelled';
+  sessionId: string;
+  stoppedAt?: string;
+  paymentRequested?: boolean;
   paymentMethod: '' | 'cash' | 'transfer' | 'wallet';
   totalAmount: number;
   requestedAmount: number;
+  grossAmount: number;
+  discountAmount: number;
+  promotion?: PromotionSnapshot | null;
   paymentError: string;
+  billingPaused?: boolean;
+  billingPausedAt?: string;
   startedAt: string;
   paidAt: string;
   items: TableBillItem[];
 }
 
+export interface PromotionSnapshot {
+  id: string;
+  name: string;
+  promotionType: 'percent' | 'amount' | 'fixed_price';
+  value: number;
+  scope: 'invoice' | 'category' | 'product';
+  audience: 'all' | 'group' | 'card';
+  minInvoiceAmount: number;
+  maxDiscount: number;
+  autoApply: boolean;
+  startAt: string;
+  endAt: string;
+  weekdays: number[];
+  timeStart: string;
+  timeEnd: string;
+  targetCategories: string[];
+  targetProducts: { id: string; name: string }[];
+  targetGroups: { id: string; name: string }[];
+  targetCards: { id: string; name: string; code: string }[];
+}
+
+export interface Promotion {
+  id: string;
+  store?: string;
+  name: string;
+  active: boolean;
+  promotionType: 'percent' | 'amount' | 'fixed_price';
+  value: number;
+  minInvoiceAmount: number;
+  maxDiscount: number;
+  autoApply: boolean;
+  startAt: string;
+  endAt: string;
+  weekdays: number[];
+  timeStart: string;
+  timeEnd: string;
+  scope: 'invoice' | 'category' | 'product';
+  targetCategories: string[];
+  targetProducts: string[];
+  audience: 'all' | 'group' | 'card';
+  targetGroups: string[];
+  targetCards: string[];
+  created?: string;
+  updated?: string;
+}
+export interface CustomerSegmentGroup { id: string; name: string; active: boolean; members: number; }
+export interface CustomerSegmentCard { id: string; code: string; name: string; active: boolean; members: number; }
+export interface CustomerSegmentUser { id: string; username: string; fullname: string; }
+export interface CustomerSegmentData {
+  groups: CustomerSegmentGroup[];
+  cards: CustomerSegmentCard[];
+  users: CustomerSegmentUser[];
+  memberships: { id: string; group: string; user: string }[];
+  cardMemberships: { id: string; card: string; user: string; cardNumber: string }[];
+}
+
+export interface TableBillHistoryEvent {
+  id: string;
+  billId: string;
+  tableName: string;
+  category: "payment" | "action";
+  eventType: string;
+  title: string;
+  actorId: string;
+  actorName: string;
+  actorRole: string;
+  paymentMethod: "" | "cash" | "transfer" | "wallet";
+  amount: number;
+  details: Record<string, unknown>;
+  happenedAt: string;
+}
+
+export interface TableBillingReport {
+  from: string;
+  to: string;
+  summary: { totalRevenue: number; paidBills: number; cashAmount: number; transferAmount: number; walletAmount: number };
+  daily: { date: string; paidBills: number; cashAmount: number; transferAmount: number; walletAmount: number; totalRevenue: number }[];
+  payments: { id: string; billId: string; tableName: string; amount: number; paymentMethod: "cash" | "transfer" | "wallet"; paidAt: string; actorName: string }[];
+  page: number;
+  hasMore: boolean;
+}
+
+export interface InventoryItem {
+  id: string;
+  name: string;
+  category: string;
+  unitLabel: string;
+  purchasePrice: number;
+  onHand: number;
+  reserved: number;
+  available: number;
+}
+
+export interface InventoryMovement {
+  id: string;
+  productId: string;
+  productName: string;
+  movementType: 'in' | 'sale' | 'adjustment';
+  quantityDelta: number;
+  unitCost: number;
+  note: string;
+  actorName: string;
+  occurredAt: string;
+}
+
+export interface AdminDashboardReport {
+  from: string;
+  to: string;
+  summary: { totalRevenue: number; goodsCost: number; otherExpenses: number; totalExpenses: number; profit: number; paidBills: number };
+  products: { productId: string; name: string; unitLabel: string; outputQuantity: number; revenue: number; cost: number; profit: number }[];
+  daily: { date: string; revenue: number; productCost: number; expenses: number; profit: number }[];
+  expenses: { id: string; amount: number; category: string; note: string; spentAt: string }[];
+}
+
 export interface TableBillProduct extends Pick<Product, 'id' | 'store' | 'name' | 'description' | 'kind' | 'price'> {
   category: string;
+  image?: string;
   billingUnit: 'hour' | 'quantity' | 'weight';
   unitLabel: string;
+  timePricing?: ProductTimePricing | null;
 }
 
 export interface TableBillCustomer {
@@ -173,6 +372,40 @@ export interface WalletTransactionPage {
   perPage: number;
   totalItems: number;
   items: WalletTransaction[];
+}
+
+export type WalletTopupStatus = 'pending' | 'paid' | 'rejected' | 'expired';
+
+export interface WalletTopup {
+  id: string;
+  store: string;
+  user: string;
+  username?: string;
+  fullname?: string;
+  amount: number;
+  status: WalletTopupStatus;
+  transferCode: string;
+  proof: string;
+  note: string;
+  reviewedBy: string;
+  reviewedAt: string;
+  rejectionReason: string;
+  gatewayTransactionId: string;
+  idempotencyKey: string;
+  created: string;
+  updated: string;
+}
+
+export interface WalletTopupPayment {
+  bankId: string;
+  accountNumber: string;
+  accountName: string;
+}
+
+export interface WalletTopupCreateResult {
+  topup: WalletTopup;
+  payment: WalletTopupPayment;
+  alreadyCreated: boolean;
 }
 
 export interface WalletUser {

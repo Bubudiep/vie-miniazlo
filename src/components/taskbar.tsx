@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "zmp-ui";
-import { HiHome } from "react-icons/hi2";
+import { useAuth } from "@/contexts/AuthContext";
 import {
+  RiDashboardFill,
+  RiDashboardLine,
   RiLayoutGridFill,
   RiLayoutGridLine,
   RiHome9Fill,
@@ -57,11 +59,20 @@ const PILL_STRETCH_WIDTH = 120;
 const TabBar = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const tabs = useMemo(() => user?.role === "admin"
+    ? [...TABS.slice(0, 2), {
+      path: "/admin",
+      label: "Quản trị",
+      icon: <RiDashboardLine size={28} />,
+      activeIcon: <RiDashboardFill size={28} />,
+    }, TABS[2]]
+    : TABS, [user?.role]);
 
   const activeIndex = useMemo(() => {
-    const index = TABS.findIndex((tab) => tab.path === location.pathname);
+    const index = tabs.findIndex((tab) => tab.path === location.pathname || (tab.path === "/admin" && location.pathname.startsWith("/admin/")));
     return index === -1 ? 0 : index;
-  }, [location.pathname]);
+  }, [location.pathname, tabs]);
 
   const [isStretching, setIsStretching] = useState(false);
 
@@ -78,7 +89,7 @@ const TabBar = () => {
 
   if (location.pathname === "/cart" || location.pathname === "/login") return null;
 
-  const slotWidth = 100 / TABS.length;
+  const slotWidth = 100 / tabs.length;
   const pillWidth = isStretching ? PILL_STRETCH_WIDTH : PILL_REST_WIDTH;
 
   return (
@@ -103,7 +114,7 @@ const TabBar = () => {
               opacity: isStretching ? 0.3 : 1,
             }}
           />
-          {TABS.map((tab, index) => {
+          {tabs.map((tab, index) => {
             const active = index === activeIndex;
             return (
               <div

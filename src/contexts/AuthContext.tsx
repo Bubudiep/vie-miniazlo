@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { getTokenPayload } from 'pocketbase';
 import pb from '@/api/pocketbase';
 import type { User } from '@/api/pocketbase';
 import { isValidUsername, normalizeUsername } from '@/utils/username';
@@ -122,6 +123,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(model as User | null);
     });
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const token = pb.authStore.token;
+    const expiresAt = getTokenPayload(token).exp;
+    if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) return;
+
+    let timeout: number;
+    const checkExpiry = () => {
+      if (pb.authStore.token !== token) return;
+      const remaining = expiresAt * 1000 - Date.now();
+      if (remaining <= 0) return pb.authStore.clear();
+      timeout = window.setTimeout(checkExpiry, Math.min(remaining, 2_147_483_647));
+    };
+    timeout = window.setTimeout(checkExpiry, Math.min(Math.max(0, expiresAt * 1000 - Date.now()), 2_147_483_647));
+    return () => window.clearTimeout(timeout);
+  }, [user]);
 
   const loginWithPassword = async (username: string, password: string) => {
     try {

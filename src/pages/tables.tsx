@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Box, Icon, Page, Sheet, Spinner, Text, useSnackbar } from "zmp-ui";
 import { useNavigate } from "react-router-dom";
 
-import { tableService, tableBillingService } from "@/api/services";
+import { adminNotificationService, tableService, tableBillingService } from "@/api/services";
 import type { Table, TableBillCustomer, TableMap } from "@/api/pocketbase";
 import { useAuth } from "@/contexts/AuthContext";
 import StoreHeader from "@/components/store-header";
@@ -38,6 +38,7 @@ export default function TablesPage() {
   const [customers, setCustomers] = useState<TableBillCustomer[]>([]);
   const [busy, setBusy] = useState(false);
   const [, setClockTick] = useState(0);
+  const [seenNotifications, setSeenNotifications] = useState<string[]>([]);
 
   const loadTables = async () => {
     if (!storeId) {
@@ -65,6 +66,22 @@ export default function TablesPage() {
     }, 15000);
     return () => window.clearInterval(timer);
   }, [storeId]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let active = true;
+    const loadNotifications = () => adminNotificationService.list().then((result) => {
+      if (!active) return;
+      const unseen = result.items.filter((item) => !seenNotifications.includes(item.id));
+      if (unseen.length) {
+        unseen.forEach((item) => openSnackbar({ text: `${item.title}: ${item.body}`, type: "warning", position: "top" }));
+        setSeenNotifications((current) => [...current, ...unseen.map((item) => item.id)]);
+      }
+    }).catch(() => {});
+    loadNotifications();
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") loadNotifications(); }, 15000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [isAdmin, seenNotifications]);
 
   useEffect(() => {
     if (!settingsOpen || !tableMap) return;
@@ -100,7 +117,7 @@ export default function TablesPage() {
   }, [tableRows]);
   const tableLabel = (table: Table | undefined | null) => {
     const number = table ? tableNumbers.get(table.id) : undefined;
-    return number ? `Bàn ${number}` : table?.name || "Bàn";
+    return number ? `Bàn ${number}` : "Bàn";
   };
   const hasPlayingTables = tableMap?.tables.some((table) => !!table.playingSince) || false;
 
@@ -114,10 +131,11 @@ export default function TablesPage() {
 
   const openTable = (table: Table) => {
     const bill = openBillFor(table.id);
-    if (!isAdmin) {
-      if (bill) navigate(`/bills/${bill.id}`);
+    if (bill) {
+      navigate(`/bills/${bill.id}`);
       return;
     }
+    if (!isAdmin) return;
     setSelectedTable(table);
     setSelectedCustomer("");
     setTableSheetOpen(true);
@@ -207,7 +225,7 @@ export default function TablesPage() {
             <Text.Title size="small" className="text-slate-900">Sơ đồ bàn</Text.Title>
             <Text size="xSmall" className="mt-1 text-slate-500">{tableMap?.tables.length || 0} bàn</Text>
           </div>
-          {isAdmin && <button onClick={() => navigate("/admin/products")} className="flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"><Icon icon="zi-list-1" />Mặt hàng</button>}
+          {isAdmin && <div className="flex gap-2"><button aria-label="Mở Dashboard" title="Dashboard" onClick={() => navigate("/admin")} className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700"><Icon icon="zi-list-1" /></button><button aria-label="Mở lịch sử bill" title="Lịch sử bill" onClick={() => navigate("/admin/bill-history")} className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700"><Icon icon="zi-clock-1" /></button><button onClick={() => navigate("/admin/products")} className="flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"><Icon icon="zi-list-1" />Mặt hàng</button></div>}
         </div>
 
         {tableRows.length === 0 || tableMap?.tables.length === 0 ? (
@@ -237,6 +255,11 @@ export default function TablesPage() {
           {keepsExtraTables && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Các bàn vượt số lượng mới sẽ được giữ nguyên. Hãy chọn và xóa từng bàn nếu không còn sử dụng.</div>}
           <button disabled={savingLayout} onClick={changeLayout} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-60">{savingLayout && <Spinner />}Lưu sơ đồ</button>
           <button onClick={() => { setSettingsOpen(false); navigate("/admin/products"); }} className="w-full rounded-lg border border-slate-300 bg-white py-3 text-sm font-semibold text-slate-700">Quản lý mặt hàng</button>
+          <button onClick={() => { setSettingsOpen(false); navigate("/admin"); }} className="w-full rounded-lg border border-slate-300 bg-white py-3 text-sm font-semibold text-slate-700">Dashboard quản trị</button>
+          <button onClick={() => { setSettingsOpen(false); navigate("/admin/inventory"); }} className="w-full rounded-lg border border-emerald-200 bg-white py-3 text-sm font-semibold text-emerald-800">Quản lý kho hàng</button>
+          <button onClick={() => { setSettingsOpen(false); navigate("/admin/bill-history"); }} className="w-full rounded-lg border border-slate-300 bg-white py-3 text-sm font-semibold text-slate-700">Lịch sử bill</button>
+          <button onClick={() => { setSettingsOpen(false); navigate("/admin/reports"); }} className="w-full rounded-lg border border-slate-300 bg-white py-3 text-sm font-semibold text-slate-700">Báo cáo doanh thu</button>
+          <button onClick={() => { setSettingsOpen(false); navigate("/admin/promotions"); }} className="w-full rounded-lg border border-emerald-200 bg-white py-3 text-sm font-semibold text-emerald-800">Khuyến mại</button>
         </Box>
       </Sheet>
 

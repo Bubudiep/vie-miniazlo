@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Avatar, Icon, Page, Spinner, Text, useSnackbar } from "zmp-ui";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { walletService } from "@/api/services";
-import type { WalletSummary } from "@/api/pocketbase";
+import { adminNotificationService, billPaymentService, walletService } from "@/api/services";
+import type { AdminNotification, BillPaymentSettings, WalletSummary } from "@/api/pocketbase";
+
+type VietQrBank = { code: string; bin: string; shortName: string; isTransfer: number };
 
 const PAGE_CLASS =
   "flex flex-col bg-white pb-[calc(env(safe-area-inset-bottom,0px)+96px)] dark:bg-black";
@@ -11,12 +13,86 @@ const PAGE_CLASS =
 function AccountPage() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
+  const [paymentSettings, setPaymentSettings] = useState<BillPaymentSettings>({ bankId: "", accountNumber: "", accountName: "" });
+  const [paymentSettingsLoading, setPaymentSettingsLoading] = useState(false);
+  const [paymentSettingsError, setPaymentSettingsError] = useState("");
+  const [savingPaymentSettings, setSavingPaymentSettings] = useState(false);
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [banks, setBanks] = useState<VietQrBank[]>([]);
+  const [banksLoading, setBanksLoading] = useState(true);
+  const [banksError, setBanksError] = useState("");
   const navigate = useNavigate();
   const { openSnackbar } = useSnackbar();
 
   useEffect(() => {
     if (isAuthenticated) walletService.getMine().then(setWallet).catch(() => setWallet(null));
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || user?.role !== "admin") return;
+    let active = true;
+    setPaymentSettingsLoading(true);
+    billPaymentService.getSettings().then((settings) => {
+      if (active) setPaymentSettings(settings);
+    }).catch((error) => {
+      if (active) setPaymentSettingsError(error?.response?.message || error?.message || "Không thể tải tài khoản nhận tiền");
+    }).then(() => {
+      if (active) setPaymentSettingsLoading(false);
+    });
+    return () => { active = false; };
+  }, [isAuthenticated, user?.id, user?.role]);
+
+  useEffect(() => {
+    if (!isAuthenticated || user?.role !== "admin") return;
+    let active = true;
+    const loadNotifications = () => adminNotificationService.list().then((result) => { if (active) setNotifications(result.items); }).catch(() => {});
+    loadNotifications();
+    const timer = window.setInterval(loadNotifications, 15000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [isAuthenticated, user?.role]);
+
+  useEffect(() => {
+    if (!isAuthenticated || user?.role !== "admin") {
+      setBanksLoading(false);
+      return;
+    }
+    let active = true;
+    setBanksLoading(true);
+    setBanksError("");
+    fetch("https://api.vietqr.io/v2/banks").then(async (response) => {
+      if (!response.ok) throw new Error("Không thể tải danh sách ngân hàng");
+      return response.json() as Promise<{ data?: VietQrBank[] }>;
+    }).then(({ data }) => {
+      const supportedBanks = (Array.isArray(data) ? data : [])
+        .filter((bank) => bank.isTransfer === 1 && /^\d{6}$/.test(bank.bin) && /ngân hàng|tmcp|\bbank\b/i.test(bank.name.normalize("NFC")))
+        .sort((a, b) => a.shortName.localeCompare(b.shortName, "vi"));
+      if (!supportedBanks.length) throw new Error("Danh sách ngân hàng VietQR trống");
+      if (active) setBanks(supportedBanks);
+    }).catch(() => {
+      if (active) setBanksError("Không tải được danh sách ngân hàng VietQR. Hãy kiểm tra kết nối rồi tải lại trang.");
+    }).finally(() => {
+      if (active) setBanksLoading(false);
+    });
+    return () => { active = false; };
+  }, [isAuthenticated, user?.role]);
+
+  const selectedBank = banks.find((bank) => bank.bin === paymentSettings.bankId || bank.code.toLowerCase() === paymentSettings.bankId.toLowerCase());
+  const hasPaymentDetails = !!(paymentSettings.bankId || paymentSettings.accountNumber || paymentSettings.accountName);
+
+  const savePaymentSettings = async () => {
+    setSavingPaymentSettings(true);
+    setPaymentSettingsError("");
+    try {
+      setPaymentSettings(await billPaymentService.saveSettings({ ...paymentSettings, bankId: selectedBank?.bin || "" }));
+      openSnackbar({ text: "Đã lưu tài khoản nhận tiền QR", type: "success", position: "top" });
+    } catch (error: any) {
+      const message = error?.response?.message || error?.response?.data?.error || error?.message || "Không thể lưu tài khoản nhận tiền";
+      setPaymentSettingsError(message);
+      openSnackbar({ text: message, type: "error", position: "top" });
+    } finally {
+      setSavingPaymentSettings(false);
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -133,9 +209,23 @@ function AccountPage() {
             </div>
 
           </div>
+          {user.role === "admin" && <section className="mt-5 space-y-3 border-t border-black/5 pt-4 dark:border-white/10">
+            <div><Text.Title size="small">Tài khoản nhận tiền bill</Text.Title><Text size="xSmall" className="mt-1 block text-[#767a7f] dark:text-[#8f9499]">Thông tin này được dùng để tạo mã QR cho bill của cửa hàng.</Text></div>
+            {paymentSettingsLoading ? <div className="flex justify-center py-4"><Spinner /></div> : <>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Ngân hàng nhận tiền (BIN VietQR)<select value={selectedBank?.bin || ""} onChange={(event) => setPaymentSettings((current) => ({ ...current, bankId: event.target.value }))} disabled={banksLoading || !banks.length} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">{banksLoading ? "Đang tải ngân hàng..." : "Chọn ngân hàng"}</option>{banks.map((bank) => <option key={bank.bin} value={bank.bin}>{bank.shortName} · {bank.bin}</option>)}</select></label>
+              {banksError && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{banksError}</div>}
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Số tài khoản<input autoComplete="off" inputMode="numeric" value={paymentSettings.accountNumber} onChange={(event) => setPaymentSettings((current) => ({ ...current, accountNumber: event.target.value }))} placeholder="Số tài khoản nhận tiền" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Tên chủ tài khoản<input autoComplete="off" value={paymentSettings.accountName} onChange={(event) => setPaymentSettings((current) => ({ ...current, accountName: event.target.value }))} placeholder="Tên in trên tài khoản ngân hàng" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
+              {paymentSettingsError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{paymentSettingsError}</div>}
+              <button type="button" disabled={savingPaymentSettings || banksLoading || (hasPaymentDetails && !selectedBank)} onClick={() => void savePaymentSettings()} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-60">{savingPaymentSettings && <Spinner />}Lưu tài khoản nhận tiền</button>
+            </>}
+          </section>}
+          {user.role === "admin" && notifications.length > 0 && <section className="mt-5 space-y-2 border-t border-amber-200 pt-4"><div className="flex items-center justify-between"><Text.Title size="small">Thông báo thanh toán</Text.Title><span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">{notifications.length} mới</span></div>{notifications.map((item) => <button key={item.id} type="button" onClick={async () => { await adminNotificationService.markRead(item.id); setNotifications((current) => current.filter((notification) => notification.id !== item.id)); if (item.referenceId) navigate(`/bills/${item.referenceId}`); }} className="w-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-left"><Text size="small" className="font-semibold text-amber-950">{item.title}</Text><Text size="xSmall" className="mt-1 block text-amber-900">{item.body}</Text></button>)}</section>}
           {user.role === "admin" && <button type="button" onClick={() => navigate("/admin/registration")} className="mt-4 flex w-full items-center justify-between rounded-lg border border-green-200 px-4 py-3 text-left text-green-700"><span>Duyệt tài khoản</span><Icon icon="zi-arrow-right" /></button>}
+          {user.role === "admin" && <button type="button" onClick={() => navigate("/admin")} className="mt-4 flex w-full items-center justify-between rounded-lg border border-emerald-200 px-4 py-3 text-left text-emerald-800"><span>Dashboard quản trị</span><Icon icon="zi-arrow-right" /></button>}
           {user.role === "admin" && <button type="button" onClick={() => navigate("/admin/wallets")} className="mt-4 flex w-full items-center justify-between rounded-xl border border-green-200 px-4 py-3 text-left text-green-700"><span>Quản lý ví user</span><Icon icon="zi-arrow-right" /></button>}
           {user.role === "admin" && <button type="button" onClick={() => navigate("/admin/xu")} className="mt-3 flex w-full items-center justify-between rounded-lg border border-amber-200 px-4 py-3 text-left text-amber-800"><span>Quản lý Xu</span><Icon icon="zi-arrow-right" /></button>}
+          {user.role === "admin" && <button type="button" onClick={() => navigate("/admin/promotions")} className="mt-3 flex w-full items-center justify-between rounded-lg border border-emerald-200 px-4 py-3 text-left text-emerald-800"><span>Chương trình khuyến mại</span><Icon icon="zi-arrow-right" /></button>}
         </div>
       </div>
 

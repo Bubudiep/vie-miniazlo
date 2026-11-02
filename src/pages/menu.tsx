@@ -2,21 +2,21 @@ import ProductCard from "@/components/product-card";
 import React, { useState, useEffect } from "react";
 import { Box, Page, Tabs, Text } from "zmp-ui";
 import { useAuth } from "@/contexts/AuthContext";
-import { productService } from "@/api/services";
-import type { Product } from "@/api/pocketbase";
+import { tableBillingService } from "@/api/services";
+import type { TableBillProduct } from "@/api/pocketbase";
 
 const Menu = () => {
   const { storeId } = useAuth();
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<TableBillProduct[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeKind, setActiveKind] = useState<Product['kind'] | 'all'>('all');
+  const [activeKind, setActiveKind] = useState<TableBillProduct['kind'] | 'all'>('all');
 
   useEffect(() => {
     const loadProducts = async () => {
       if (!storeId) return;
 
       try {
-        const result = await productService.list(storeId, 1, 100);
+        const result = await tableBillingService.getProducts();
         setProducts(result.items);
       } catch (err) {
         console.error("Không thể tải sản phẩm", err);

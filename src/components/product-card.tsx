@@ -2,18 +2,25 @@ import { useSetAtom } from "jotai";
 import type { MouseEvent } from "react";
 import { Icon, Text, useSnackbar } from "zmp-ui";
 
-import type { Product } from "@/api/pocketbase";
+import pb, { type Product, type TableBillProduct } from "@/api/pocketbase";
 import { formatCurrency } from "@/utils/format";
 
-function ProductCard({ product }: { product: Product }) {
+function ProductCard({ product }: { product: Product | TableBillProduct }) {
   const { openSnackbar } = useSnackbar();
+  const billingUnit = "billingUnit" in product ? product.billingUnit : product.billing_unit;
+  const unitLabel = "unitLabel" in product ? product.unitLabel : product.unit_label;
+  const image = "image" in product ? product.image : undefined;
+  const imageUrl = image ? pb.files.getURL({ id: product.id, collectionName: "products" }, image) : "";
 
   return (
     <div className="overflow-hidden rounded-2xl border border-black/10 dark:border-white/10">
       <div className="relative flex aspect-square items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-[#2a2a2c] dark:to-[#1c1c1e]">
-        {product?.image ? (
+        {imageUrl ? (
           <img
-            src={product?.image}
+            src={imageUrl}
+            alt={product.name}
+            loading="lazy"
+            decoding="async"
             className="object-cover w-full h-full flex items-center justify-center"
           />
         ) : (
@@ -40,7 +47,7 @@ function ProductCard({ product }: { product: Product }) {
           <div className="min-w-0">
             <div className="flex items-baseline gap-1.5">
               <Text size="small" bold className="text-[#dc1f18]">
-                {formatCurrency(product.price)}{product.billing_unit === 'hour' ? '/giờ' : `/${product.unit_label || (product.billing_unit === 'weight' ? 'kg' : 'lần')}`}
+                {formatCurrency(product.price)}{billingUnit === 'hour' ? '/giờ' : `/${unitLabel || (billingUnit === 'weight' ? 'kg' : 'lần')}`}
               </Text>
             </div>
           </div>

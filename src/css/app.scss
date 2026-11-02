@@ -2,6 +2,16 @@
   padding: 16px 16px 96px 16px;
 }
 
+.bill-page {
+  height: calc(100vh - env(safe-area-inset-bottom, 0px) - 88px);
+}
+
+@supports (height: 100dvh) {
+  .bill-page {
+    height: calc(100dvh - env(safe-area-inset-bottom, 0px) - 88px);
+  }
+}
+
 .section-container {
   padding: 16px;
   background: #ffffff;
