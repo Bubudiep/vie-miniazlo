@@ -37,3 +37,12 @@ Thumbs.db
 # Production build
 www/
 dist/
+
+# PocketBase runtime and local artifacts
+pocketbase/pb_data/
+pocketbase/backups/
+pocketbase/node_modules/
+pocketbase/*.exe
+pocketbase/*.log
+pocketbase/*.pid
+pocketbase/test_*.txt

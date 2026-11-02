@@ -1,0 +1,35 @@
+/// <reference path="../pb_data/types.d.ts" />
+migrate(
+  (db) => {
+    const dao = new Dao(db)
+    const collection = dao.findCollectionByNameOrId("_pb_users_auth_")
+
+    // Add is_internal field
+    collection.schema.addField(new SchemaField({
+      name: "is_internal",
+      type: "bool",
+      required: false,
+    }))
+
+    // Add employee_code field
+    collection.schema.addField(new SchemaField({
+      name: "employee_code",
+      type: "text",
+      required: false,
+      options: {
+        max: 50,
+      },
+    }))
+
+    return dao.saveCollection(collection)
+  },
+  (db) => {
+    const dao = new Dao(db)
+    const collection = dao.findCollectionByNameOrId("_pb_users_auth_")
+
+    collection.schema.removeField("is_internal")
+    collection.schema.removeField("employee_code")
+
+    return dao.saveCollection(collection)
+  }
+)

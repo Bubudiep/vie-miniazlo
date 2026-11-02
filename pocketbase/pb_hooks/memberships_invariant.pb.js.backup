@@ -1,0 +1,50 @@
+/// <reference path="../pb_data/types.d.ts" />
+
+/**
+ * Membership Invariant Hook
+ * Enforces: membership.company === membership.branch.company
+ * When: membership.branch is not null
+ */
+
+onRecordCreateRequest((e) => {
+  validateMembershipInvariant(e);
+}, "memberships");
+
+onRecordUpdateRequest((e) => {
+  validateMembershipInvariant(e);
+}, "memberships");
+
+function validateMembershipInvariant(e) {
+  const record = e.record;
+  const branchId = record.get("branch");
+
+  // If branch is null/empty, membership is company-wide (allowed)
+  if (!branchId || branchId === "") {
+    return;
+  }
+
+  const membershipCompanyId = record.get("company");
+
+  if (!membershipCompanyId || membershipCompanyId === "") {
+    throw new BadRequestError("Membership company is required");
+  }
+
+  // Fetch the branch record to get its company
+  let branch;
+  try {
+    branch = e.app.dao().findRecordById("branches", branchId);
+  } catch (err) {
+    throw new BadRequestError("Branch not found");
+  }
+
+  const branchCompanyId = branch.get("company");
+
+  // Enforce invariant: membership.company must equal branch.company
+  if (membershipCompanyId !== branchCompanyId) {
+    throw new BadRequestError(
+      "Membership branch must belong to the same company. " +
+      "Branch belongs to company '" + branchCompanyId + "' " +
+      "but membership is for company '" + membershipCompanyId + "'"
+    );
+  }
+}

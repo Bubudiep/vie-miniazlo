@@ -98,7 +98,7 @@ const TabBar = () => {
       style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)" }}
     >
       <div
-        className="mx-auto max-w-sm rounded-full border border-green-100/50 bg-white/70
+        className="h2-glass-surface mx-auto max-w-sm rounded-full border border-green-100/50
         py-1.5 shadow-[0_8px_32px_-8px_rgba(26,182,135,0.25)] backdrop-blur-xl
         dark:border-green-500/20 dark:bg-slate-900/70"
       >

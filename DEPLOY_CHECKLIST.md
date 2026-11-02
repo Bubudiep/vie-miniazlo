@@ -4,7 +4,7 @@
 
 1. Từ thư mục `billiard`, chạy `./scripts/start-dev-backend.ps1` trong PowerShell (hoặc `./start_backend.sh` trong môi trường có PocketBase executable tương ứng).
 2. Kiểm tra `http://127.0.0.1:8390/api/health` và Admin UI tại `http://127.0.0.1:8390/_/`.
-3. Trong `vie-minizalo`, chạy `npm install` và `npm run dev`.
+3. Từ thư mục `billiard`, chạy `npm install` và `npm run dev`.
 4. Mở URL Vite in ra trên cùng máy, đăng nhập bằng tài khoản `users` đã được phê duyệt, kiểm tra trang bàn, menu và ví.
 5. Chạy `npm run build` để xác nhận frontend build được.
 

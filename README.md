@@ -7,7 +7,6 @@
 ```powershell
 cd "D:\My App\billiard"
 .\scripts\start-dev-backend.ps1
-cd vie-minizalo
 npm install
 npm run dev
 ```

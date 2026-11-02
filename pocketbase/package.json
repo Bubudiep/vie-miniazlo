@@ -1,0 +1,12 @@
+{
+  "name": "pocketbase-setup",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "setup": "node create-collections.js"
+  },
+  "dependencies": {
+    "crypto": "^1.0.1",
+    "pocketbase": "^0.21.5"
+  }
+}

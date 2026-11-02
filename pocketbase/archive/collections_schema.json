@@ -1,0 +1,106 @@
+[
+  {
+    "name": "companies",
+    "type": "base",
+    "system": false,
+    "schema": [
+      {"name": "name", "type": "text", "required": true, "options": {"max": 255}},
+      {"name": "business_code", "type": "text", "options": {"max": 50}},
+      {"name": "service_type", "type": "select", "options": {"values": ["retail","restaurant","wholesale","service","other"]}},
+      {"name": "contact_name", "type": "text", "options": {"max": 150}},
+      {"name": "contact_email", "type": "email"},
+      {"name": "contact_phone", "type": "text", "options": {"max": 20}},
+      {"name": "address", "type": "text", "options": {"max": 255}}
+    ],
+    "listRule": "@request.auth.id != ''",
+    "viewRule": "@request.auth.id != ''",
+    "createRule": "@request.auth.role.name = 'admin'",
+    "updateRule": "@request.auth.role.name = 'admin'",
+    "deleteRule": "@request.auth.role.name = 'admin'"
+  },
+  {
+    "name": "roles",
+    "type": "base",
+    "system": false,
+    "schema": [
+      {"name": "company", "type": "relation", "required": true, "options": {"collectionId": "COMPANIES_ID", "cascadeDelete": true}},
+      {"name": "name", "type": "text", "required": true, "options": {"max": 100}},
+      {"name": "display_name", "type": "text", "options": {"max": 100}}
+    ],
+    "indexes": ["CREATE UNIQUE INDEX idx_roles_company_name ON roles (company, name)"],
+    "listRule": "@request.auth.id != '' && @request.auth.company = company",
+    "viewRule": "@request.auth.id != '' && @request.auth.company = company",
+    "createRule": "@request.auth.role.name = 'admin'",
+    "updateRule": "@request.auth.role.name = 'admin'",
+    "deleteRule": "@request.auth.role.name = 'admin'"
+  },
+  {
+    "name": "customers",
+    "type": "base",
+    "system": false,
+    "schema": [
+      {"name": "company", "type": "relation", "required": true, "options": {"collectionId": "COMPANIES_ID", "cascadeDelete": true}},
+      {"name": "name", "type": "text", "required": true, "options": {"max": 150}},
+      {"name": "phone", "type": "text", "options": {"max": 20}},
+      {"name": "email", "type": "email"},
+      {"name": "address", "type": "text", "options": {"max": 255}},
+      {"name": "note", "type": "text"}
+    ],
+    "indexes": ["CREATE UNIQUE INDEX idx_customers_company_phone ON customers (company, phone) WHERE phone != ''"],
+    "listRule": "@request.auth.id != '' && @request.auth.company = company",
+    "viewRule": "@request.auth.id != '' && @request.auth.company = company",
+    "createRule": "@request.auth.id != '' && @request.auth.company = company",
+    "updateRule": "@request.auth.id != '' && @request.auth.company = company",
+    "deleteRule": "@request.auth.role.name = 'admin'"
+  },
+  {
+    "name": "products",
+    "type": "base",
+    "system": false,
+    "schema": [
+      {"name": "company", "type": "relation", "required": true, "options": {"collectionId": "COMPANIES_ID", "cascadeDelete": true}},
+      {"name": "category", "type": "relation", "options": {"collectionId": "CATEGORIES_ID", "maxSelect": 1}},
+      {"name": "kind", "type": "select", "required": true, "options": {"values": ["goods","food","drink"]}},
+      {"name": "name", "type": "text", "required": true, "options": {"max": 255}},
+      {"name": "unit", "type": "text", "required": true, "options": {"max": 50}},
+      {"name": "price", "type": "number", "required": true},
+      {"name": "sku", "type": "text", "options": {"max": 100}},
+      {"name": "image", "type": "file", "options": {"maxSelect": 1, "maxSize": 5242880}},
+      {"name": "track_stock", "type": "bool", "required": true},
+      {"name": "stock_quantity", "type": "number", "required": true},
+      {"name": "is_out_of_stock", "type": "bool", "required": true},
+      {"name": "show_in_menu", "type": "bool", "required": true},
+      {"name": "is_active", "type": "bool", "required": true}
+    ],
+    "listRule": "@request.auth.id != '' && @request.auth.company = company",
+    "viewRule": "@request.auth.id != '' && @request.auth.company = company",
+    "createRule": "@request.auth.id != '' && @request.auth.company = company",
+    "updateRule": "@request.auth.id != '' && @request.auth.company = company",
+    "deleteRule": "@request.auth.role.name = 'admin'"
+  },
+  {
+    "name": "tables",
+    "type": "base",
+    "system": false,
+    "schema": [
+      {"name": "company", "type": "relation", "required": true, "options": {"collectionId": "COMPANIES_ID", "cascadeDelete": true}},
+      {"name": "floor", "type": "relation", "required": true, "options": {"collectionId": "FLOORS_ID", "cascadeDelete": true}},
+      {"name": "name", "type": "text", "required": true, "options": {"max": 100}},
+      {"name": "table_type", "type": "select", "required": true, "options": {"values": ["dining","billiards","karaoke","other"]}},
+      {"name": "capacity", "type": "number", "required": true},
+      {"name": "hourly_rate", "type": "number"},
+      {"name": "pos_x", "type": "number", "required": true},
+      {"name": "pos_y", "type": "number", "required": true},
+      {"name": "width", "type": "number", "required": true},
+      {"name": "height", "type": "number", "required": true},
+      {"name": "status", "type": "select", "required": true, "options": {"values": ["available","occupied","reserved","cleaning"]}},
+      {"name": "is_active", "type": "bool", "required": true},
+      {"name": "camera_url", "type": "url"}
+    ],
+    "listRule": "@request.auth.id != '' && @request.auth.company = company",
+    "viewRule": "@request.auth.id != '' && @request.auth.company = company",
+    "createRule": "@request.auth.id != '' && @request.auth.company = company",
+    "updateRule": "@request.auth.id != '' && @request.auth.company = company",
+    "deleteRule": "@request.auth.role.name = 'admin'"
+  }
+]

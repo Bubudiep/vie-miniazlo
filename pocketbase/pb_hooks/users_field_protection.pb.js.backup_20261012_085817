@@ -1,0 +1,47 @@
+/// <reference path="../pb_data/types.d.ts" />
+
+/**
+ * Server-side validation to protect sensitive user fields
+ * Prevents unauthorized modification of: company, role, is_system_admin
+ * Compatible with PocketBase 0.40.4
+ */
+
+onModelBeforeUpdate((e) => {
+  // Only apply to users collection
+  if (e.model.tableName() !== "users") {
+    return
+  }
+
+  const protectedFields = ["company", "role", "is_system_admin"]
+
+  // Check if any protected field is being modified
+  let hasProtectedFieldUpdate = false
+  for (const field of protectedFields) {
+    if (e.model.isFieldChanged(field)) {
+      hasProtectedFieldUpdate = true
+      break
+    }
+  }
+
+  // No protected fields modified - allow
+  if (!hasProtectedFieldUpdate) {
+    return
+  }
+
+  // Get auth context - only superusers can modify protected fields
+  const authRecord = e.httpContext?.get("authRecord")
+  if (!authRecord) {
+    throw new BadRequestError("Authentication required to modify protected fields")
+  }
+
+  // Allow superusers (admin panel)
+  if (authRecord.collection().name === "_superusers") {
+    return
+  }
+
+  // Reject all other modifications to protected fields
+  const modifiedFields = protectedFields.filter(f => e.model.isFieldChanged(f))
+  throw new BadRequestError(
+    `Cannot modify protected fields: ${modifiedFields.join(", ")}. Only superusers can modify these fields.`
+  )
+})

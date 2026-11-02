@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tables MVP Test - H2 Billiard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0F172A;
+            color: #F8FAFC;
+            padding: 2rem;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 {
+            font-size: 1.875rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #F8FAFC;
+        }
+        .subtitle {
+            color: #94A3B8;
+            margin-bottom: 2rem;
+        }
+        .login-form {
+            background: #1E293B;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            border: 1px solid #334155;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            color: #CBD5E1;
+        }
+        input {
+            width: 100%;
+            padding: 0.625rem;
+            background: #0F172A;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #F8FAFC;
+            font-size: 0.875rem;
+        }
+        input:focus {
+            outline: none;
+            border-color: #38BDF8;
+        }
+        button {
+            padding: 0.625rem 1.25rem;
+            background: #38BDF8;
+            color: #0F172A;
+            border: none;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+        button:hover {
+            background: #22D3EE;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+        }
+        .status.error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid #EF4444;
+            color: #FCA5A5;
+        }
+        .status.success {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid #22C55E;
+            color: #86EFAC;
+        }
+        .status.info {
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid #38BDF8;
+            color: #7DD3FC;
+        }
+        .tables-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+        .table-card {
+            background: #1E293B;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #334155;
+        }
+        .table-name {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .table-status {
+            display: inline-block;
+            padding: 0.25rem 0.625rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+        }
+        .table-status.available {
+            background: rgba(34, 197, 94, 0.1);
+            color: #86EFAC;
+        }
+        .table-status.occupied {
+            background: rgba(239, 68, 68, 0.1);
+            color: #FCA5A5;
+        }
+        .table-status.reserved {
+            background: rgba(251, 191, 36, 0.1);
+            color: #FCD34D;
+        }
+        .table-status.cleaning {
+            background: rgba(148, 163, 184, 0.1);
+            color: #CBD5E1;
+        }
+        .table-meta {
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid #334155;
+            font-size: 0.75rem;
+            color: #94A3B8;
+        }
+        .hidden { display: none; }
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #94A3B8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Quản lý Bàn Billiard</h1>
+        <p class="subtitle">MVP Test - H2 Billiard Management</p>
+
+        <div id="loginSection" class="login-form">
+            <h2 style="margin-bottom: 1rem; font-size: 1.125rem;">Đăng nhập</h2>
+            <div class="form-group">
+                <label for="username">Tên đăng nhập</label>
+                <input type="text" id="username" value="testuser" />
+            </div>
+            <div class="form-group">
+                <label for="password">Mật khẩu</label>
+                <input type="password" id="password" value="testpass123" />
+            </div>
+            <button onclick="login()">Đăng nhập</button>
+        </div>
+
+        <div id="statusMessage"></div>
+
+        <div id="tablesSection" class="hidden">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2 style="font-size: 1.25rem; font-weight: 600;">Danh sách bàn</h2>
+                <button onclick="loadTables()">Tải lại</button>
+            </div>
+            <div id="tablesGrid" class="tables-grid"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://127.0.0.1:8390/api';
+        let authToken = null;
+        let currentUser = null;
+
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.className = `status ${type}`;
+            statusEl.textContent = message;
+            statusEl.style.display = 'block';
+        }
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                showStatus('Đang đăng nhập...', 'info');
+                const response = await fetch(`${API_URL}/collections/users/auth-with-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ identity: username, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.token) {
+                    authToken = data.token;
+                    currentUser = data.record;
+                    document.getElementById('loginSection').classList.add('hidden');
+                    document.getElementById('tablesSection').classList.remove('hidden');
+                    showStatus(`Xin chào, ${currentUser.username}!`, 'success');
+                    loadTables();
+                } else {
+                    showStatus(data.message || 'Đăng nhập thất bại', 'error');
+                }
+            } catch (error) {
+                showStatus('Lỗi kết nối: ' + error.message, 'error');
+            }
+        }
+
+        async function loadTables() {
+            const gridEl = document.getElementById('tablesGrid');
+            gridEl.innerHTML = '<div class="loading">Đang tải dữ liệu...</div>';
+
+            try {
+                const response = await fetch(`${API_URL}/collections/tables/records`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.items) {
+                    // CLIENT-SIDE FILTER: PocketBase rules không filter được vì JWT không có company field
+                    // ⚠️ SECURITY NOTE: Đây là workaround cho MVP, production cần server-side filter
+                    const userCompany = currentUser.company;
+                    const filteredTables = data.items.filter(table => table.company === userCompany);
+
+                    if (filteredTables.length === 0) {
+                        gridEl.innerHTML = '<div class="loading">Không có bàn nào trong company của bạn</div>';
+                    } else {
+                        gridEl.innerHTML = filteredTables.map(table => `
+                            <div class="table-card">
+                                <div class="table-name">${table.name}</div>
+                                <span class="table-status ${table.status}">${table.status}</span>
+                                <div class="table-meta">
+                                    ${table.table_type ? `Loại: ${table.table_type}` : ''}
+                                    <br>ID: ${table.id.substring(0, 8)}...
+                                </div>
+                            </div>
+                        `).join('');
+                        showStatus(`Đã tải ${filteredTables.length}/${data.totalItems} bàn (filtered by company)`, 'success');
+                    }
+                } else {
+                    gridEl.innerHTML = '<div class="loading">Không thể tải dữ liệu</div>';
+                    showStatus(data.message || 'Lỗi tải dữ liệu', 'error');
+                }
+            } catch (error) {
+                gridEl.innerHTML = '<div class="loading">Lỗi kết nối</div>';
+                showStatus('Lỗi: ' + error.message, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

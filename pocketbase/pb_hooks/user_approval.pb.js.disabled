@@ -1,0 +1,63 @@
+/// <reference path="../pb_data/types.d.ts" />
+
+/**
+ * Authentication hooks - intercept auth attempts to check is_approved
+ */
+
+// Hook vào OnRecordAuthRequest để kiểm tra is_approved trước khi login
+onRecordAuthRequest((e) => {
+  // Only check for users collection
+  if (e.collection.name !== "users") {
+    return
+  }
+
+  // Get the authenticated record
+  const user = e.record
+
+  // Check if user is approved (default false if field doesn't exist)
+  const isApproved = user.getBool("is_approved")
+
+  if (!isApproved) {
+    // Throw error to prevent login
+    throw new BadRequestError("Tài khoản chưa được phê duyệt. Vui lòng liên hệ admin.")
+  }
+}, "users")
+
+// Hook vào OnRecordAfterCreateRequest để log khi user đăng ký
+onRecordAfterCreateRequest((e) => {
+  if (e.collection.name !== "users") {
+    return
+  }
+
+  const user = e.record
+
+  console.log(JSON.stringify({
+    action: "user_registered",
+    user_id: user.id,
+    username: user.get("username"),
+    email: user.get("email") || "",
+    is_approved: user.getBool("is_approved"),
+    timestamp: new Date().toISOString()
+  }))
+}, "users")
+
+// Hook vào OnRecordAfterUpdateRequest để log khi admin phê duyệt
+onRecordAfterUpdateRequest((e) => {
+  if (e.collection.name !== "users") {
+    return
+  }
+
+  const user = e.record
+  const oldIsApproved = e.record.originalCopy().getBool("is_approved")
+  const newIsApproved = user.getBool("is_approved")
+
+  // Log only when is_approved changes from false to true
+  if (!oldIsApproved && newIsApproved) {
+    console.log(JSON.stringify({
+      action: "user_approved",
+      user_id: user.id,
+      username: user.get("username"),
+      approved_at: new Date().toISOString()
+    }))
+  }
+}, "users")

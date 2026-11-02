@@ -16,7 +16,7 @@ export default function StoreHeader({ onSettings }: { onSettings?: () => void })
   );
 
   return (
-    <div className="sticky top-0 z-10 flex w-full items-center gap-2 rounded-b-2xl border-b border-orange-100 bg-white/90 px-4 pb-2 pt-11 shadow-sm backdrop-blur-md">
+    <div className="h2-glass-surface sticky top-0 z-10 flex w-full items-center gap-2 rounded-b-2xl border-b border-orange-100 px-4 pb-2 pt-11">
       <img src={logo} alt="Logo H2 Billiards" className="h-10 w-10 shrink-0 rounded-lg shadow-md" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1 text-[20px] font-semibold leading-tight text-slate-900">

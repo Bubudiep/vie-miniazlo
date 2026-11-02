@@ -1,3 +1,129 @@
+:root {
+  --h2-surface: rgba(255, 255, 255, 0.78);
+  --h2-surface-strong: rgba(255, 255, 255, 0.92);
+  --h2-border: rgba(148, 163, 184, 0.24);
+  --h2-border-strong: rgba(148, 163, 184, 0.38);
+  --h2-shadow: 0 12px 32px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04);
+  --h2-shadow-raised: 0 18px 44px rgba(15, 23, 42, 0.14), 0 4px 12px rgba(15, 23, 42, 0.06);
+  --h2-radius-sm: 12px;
+  --h2-radius-md: 16px;
+  --h2-radius-lg: 20px;
+}
+
+html {
+  background: #f1f5f9;
+  color-scheme: light;
+}
+
+body {
+  min-width: 320px;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 12% -8%, rgba(20, 184, 166, 0.12), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(251, 146, 60, 0.12), transparent 30%),
+    #f1f5f9;
+  color: #0f172a;
+  -webkit-tap-highlight-color: rgba(20, 184, 166, 0.16);
+  touch-action: manipulation;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+button,
+a {
+  transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+button:active,
+a:active {
+  transform: scale(0.985);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(20, 184, 166, 0.35);
+  outline-offset: 2px;
+}
+
+/* Shared shape language: softer than the old 8px corners, still compact on mobile. */
+.rounded-md { border-radius: var(--h2-radius-sm) !important; }
+.rounded-lg { border-radius: var(--h2-radius-md) !important; }
+.rounded-xl { border-radius: var(--h2-radius-lg) !important; }
+.rounded-2xl { border-radius: 24px !important; }
+
+/* Frosted surfaces keep the existing color utilities while adding depth. */
+.bg-white {
+  background-color: var(--h2-surface) !important;
+  border-color: var(--h2-border);
+  box-shadow: var(--h2-shadow);
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+}
+
+.h2-glass-surface {
+  background: var(--h2-surface) !important;
+  border: 1px solid var(--h2-border) !important;
+  box-shadow: var(--h2-shadow) !important;
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+}
+
+.h2-glass-surface-strong {
+  background: var(--h2-surface-strong) !important;
+  border-color: var(--h2-border-strong) !important;
+  box-shadow: var(--h2-shadow-raised) !important;
+  backdrop-filter: blur(24px) saturate(145%);
+  -webkit-backdrop-filter: blur(24px) saturate(145%);
+}
+
+.border-slate-200,
+.border-slate-300,
+.border-green-100\/50,
+.border-orange-100 {
+  border-color: var(--h2-border) !important;
+}
+
+input,
+select,
+textarea {
+  min-height: 44px;
+  border-radius: var(--h2-radius-sm);
+  border-color: var(--h2-border-strong);
+  background-color: rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.03);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #94a3b8;
+}
+
+/* ZaUI sheets/dialogs should read as separate floating surfaces. */
+.zaui-sheet-content,
+.zaui-modal-content,
+[role="dialog"] {
+  border: 1px solid var(--h2-border) !important;
+  border-radius: 24px 24px 0 0 !important;
+  box-shadow: var(--h2-shadow-raised) !important;
+  background: var(--h2-surface-strong) !important;
+  backdrop-filter: blur(24px) saturate(145%);
+  -webkit-backdrop-filter: blur(24px) saturate(145%);
+  overscroll-behavior: contain;
+}
+
+[role="dialog"] {
+  border-radius: 24px !important;
+}
+
 .page {
   padding: 16px 16px 96px 16px;
 }
@@ -14,11 +140,46 @@
 
 .section-container {
   padding: 16px;
-  background: #ffffff;
-  border-radius: 8px;
+  background: var(--h2-surface);
+  border: 1px solid var(--h2-border);
+  border-radius: var(--h2-radius-md);
+  box-shadow: var(--h2-shadow);
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
   margin-bottom: 24px;
 }
 
 .zaui-list-item {
   cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  html { background: #0f172a; }
+  body {
+    color-scheme: dark;
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+  :root {
+    --h2-surface: rgba(30, 41, 59, 0.78);
+    --h2-surface-strong: rgba(15, 23, 42, 0.92);
+    --h2-border: rgba(148, 163, 184, 0.2);
+    --h2-border-strong: rgba(148, 163, 184, 0.32);
+    --h2-shadow: 0 12px 32px rgba(0, 0, 0, 0.24), 0 2px 8px rgba(0, 0, 0, 0.16);
+    --h2-shadow-raised: 0 18px 44px rgba(0, 0, 0, 0.38), 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+  input,
+  select,
+  textarea { background-color: rgba(30, 41, 59, 0.82); color: #e2e8f0; }
 }

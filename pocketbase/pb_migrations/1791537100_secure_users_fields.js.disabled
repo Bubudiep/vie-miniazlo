@@ -1,0 +1,19 @@
+/// <reference path="../pb_data/types.d.ts" />
+
+migrate((app) => {
+  const collection = app.findCollectionByNameOrId("_pb_users_auth_")
+
+  unmarshal({
+    "updateRule": "id = @request.auth.id && @request.data.company:isset = false && @request.data.role:isset = false && @request.data.is_system_admin:isset = false || @request.auth.role = \"admin\""
+  }, collection)
+
+  return app.save(collection)
+}, (app) => {
+  const collection = app.findCollectionByNameOrId("_pb_users_auth_")
+
+  unmarshal({
+    "updateRule": "id = @request.auth.id || @request.auth.role = \"admin\""
+  }, collection)
+
+  return app.save(collection)
+})

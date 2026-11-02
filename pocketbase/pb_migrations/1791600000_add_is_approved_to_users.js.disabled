@@ -1,0 +1,27 @@
+/// <reference path="../pb_data/types.d.ts" />
+migrate((db) => {
+  const dao = new Dao(db)
+  const collection = dao.findCollectionByNameOrId("users")
+
+  // Add is_approved field
+  collection.schema.addField(new SchemaField({
+    "system": false,
+    "id": "bool_is_approved",
+    "name": "is_approved",
+    "type": "bool",
+    "required": false,
+    "presentable": false,
+    "unique": false,
+    "options": {}
+  }))
+
+  return dao.saveCollection(collection)
+}, (db) => {
+  const dao = new Dao(db)
+  const collection = dao.findCollectionByNameOrId("users")
+
+  // Remove is_approved field
+  collection.schema.removeField("bool_is_approved")
+
+  return dao.saveCollection(collection)
+})
