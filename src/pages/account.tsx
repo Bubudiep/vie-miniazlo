@@ -25,7 +25,25 @@ function AccountPage() {
   const { openSnackbar } = useSnackbar();
 
   useEffect(() => {
-    if (isAuthenticated) walletService.getMine().then(setWallet).catch(() => setWallet(null));
+    if (!isAuthenticated) {
+      setWallet(null);
+      return;
+    }
+    let active = true;
+    const refreshWallet = () => walletService.getMine().then((summary) => {
+      if (active) setWallet(summary);
+    }).catch(() => {});
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshWallet();
+    };
+    void refreshWallet();
+    const timer = window.setInterval(refreshWhenVisible, 5000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [isAuthenticated]);
 
   useEffect(() => {
@@ -166,11 +184,19 @@ function AccountPage() {
           <Text.Title size="small">Thông tin tài khoản</Text.Title>
 
           <div className="mt-4 space-y-3">
-            <button type="button" onClick={() => navigate("/account/wallet")} className="w-full rounded-2xl bg-slate-50 p-4 text-left dark:bg-white/10">
-              <div className="flex items-center justify-between"><Text size="small">Tài khoản chính</Text><Text size="small" className="font-semibold text-green-600">{(wallet?.mainBalance || 0).toLocaleString("vi-VN")}đ</Text></div>
-              <div className="mt-3 flex items-center justify-between"><Text size="small">Tài khoản khuyến mại</Text><Text size="small" className="font-semibold text-orange-500">{(wallet?.promoBalance || 0).toLocaleString("vi-VN")}đ</Text></div>
-              <Text size="xSmall" className="mt-3 block text-[#767a7f]">Chạm để xem chi tiết và lịch sử</Text>
-            </button>
+            <section className="rounded-2xl bg-slate-50 p-4 dark:bg-white/10">
+              <button type="button" onClick={() => navigate("/account/wallet")} className="w-full text-left">
+                <div className="flex items-center justify-between"><Text size="small">Tài khoản chính</Text><Text size="small" className="font-semibold text-green-600">{(wallet?.mainBalance || 0).toLocaleString("vi-VN")}đ</Text></div>
+                <div className="mt-3 flex items-center justify-between"><Text size="small">Tài khoản khuyến mại</Text><Text size="small" className="font-semibold text-orange-500">{(wallet?.promoBalance || 0).toLocaleString("vi-VN")}đ</Text></div>
+              </button>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <Text size="xSmall" className="text-[#767a7f]">Xem chi tiết và lịch sử ví</Text>
+                <button type="button" onClick={() => navigate("/account/wallet?topup=1")} className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg bg-green-600 px-3 text-sm font-semibold text-white">
+                  <Icon icon="zi-plus" size={16} />
+                  Nạp tiền
+                </button>
+              </div>
+            </section>
             <button type="button" onClick={() => navigate("/account/xu")} className="flex w-full items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-left dark:border-amber-900 dark:bg-amber-950/30">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><Icon icon="zi-star-solid" /></span>
               <span className="min-w-0 flex-1"><Text size="small" className="font-semibold">Xu thưởng</Text><Text size="xSmall" className="mt-1 block text-slate-600 dark:text-slate-300">Điểm danh, giới thiệu bạn bè và đổi quà</Text></span>

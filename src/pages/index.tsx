@@ -1,5 +1,5 @@
 import { Box, Icon, Page, Text } from "zmp-ui";
-import logo from "@/images/logo.png";
+import logo from "@/images/logo.jpg";
 import StoreHeader from "@/components/store-header";
 import { formatDateTime } from "@/utils/format";
 import { IoMdHeart, IoMdChatbubbles } from "react-icons/io";

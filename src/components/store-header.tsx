@@ -1,7 +1,7 @@
 import { TbRosetteDiscountCheckFilled } from 'react-icons/tb';
 import { FiSettings } from 'react-icons/fi';
 import { useAuth } from '@/contexts/AuthContext';
-import logo from '@/images/logo.png';
+import logo from '@/images/logo.jpg';
 
 export default function StoreHeader({ onSettings }: { onSettings?: () => void }) {
   const { storeId, storeName, storeNameStatus, user } = useAuth();

@@ -3,7 +3,16 @@
 
 Write-Host "Starting PocketBase server..." -ForegroundColor Green
 
-Set-Location -Path "pocketbase"
+$envFile = Join-Path $PSScriptRoot ".env"
+if (Test-Path $envFile) {
+    foreach ($line in Get-Content $envFile) {
+        if ($line -match '^\s*SEPAY_WEBHOOK_SECRET\s*=\s*(.+?)\s*$') {
+            $env:SEPAY_WEBHOOK_SECRET = $matches[1].Trim().Trim('"').Trim("'")
+        }
+    }
+}
+
+Set-Location -Path (Join-Path $PSScriptRoot "pocketbase")
 
 # Kill existing PocketBase process if running
 $processes = Get-Process -Name "pocketbase" -ErrorAction SilentlyContinue

@@ -155,6 +155,10 @@ export const tableService = {
 
   async updateStatus(id: string, status: Table['status']) {
     return pb.send<{ ok: boolean }>('/api/table-billing/action', { method: 'POST', body: { action: 'set_table_status', tableId: id, status } });
+  },
+
+  async rename(id: string, name: string) {
+    return pb.send<{ ok: boolean; name: string }>('/api/table-billing/action', { method: 'POST', body: { action: 'rename_table', tableId: id, name } });
   }
 };
 
@@ -335,6 +339,9 @@ export const walletService = {
   },
   async getMyTopups(page = 1, perPage = 20) {
     return pb.send<{ page: number; perPage: number; totalItems: number; items: WalletTopup[] }>(`/api/wallet/topups?page=${page}&perPage=${perPage}`, { method: 'GET' });
+  },
+  async cancelTopup(topupId: string) {
+    return pb.send<{ topup: Pick<WalletTopup, 'id' | 'status'> }>(`/api/wallet/topups/${encodeURIComponent(topupId)}/cancel`, { method: 'POST' });
   },
   async listTopups(status = 'pending', query = '') {
     return pb.send<{ items: WalletTopup[] }>(`/api/admin/wallet-topups?status=${encodeURIComponent(status)}&q=${encodeURIComponent(query)}`, { method: 'GET' });

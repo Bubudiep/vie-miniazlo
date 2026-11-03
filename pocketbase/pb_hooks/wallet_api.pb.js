@@ -842,10 +842,24 @@ routerAdd("GET", "/api/wallet/topups", (c) => {
   const query = info.query || {}
   const page = Math.max(1, Number(query.page || 1))
   const perPage = Math.min(50, Math.max(1, Number(query.perPage || 20)))
-  const records = $app.findRecordsByFilter("wallet_topup_requests", "user = {:user} && store = {:store}", "-created", -1, 0, { user: auth.id, store })
+  const records = $app.findRecordsByFilter("wallet_topup_requests", "user = {:user} && store = {:store} && status != 'expired'", "-created", -1, 0, { user: auth.id, store })
   const toJson = (record) => ({ id: record.id, store: record.get("store"), user: record.get("user"), username: auth.get("username") || "", fullname: auth.get("fullname") || "", amount: Number(record.get("amount")) || 0, status: record.get("status") || "pending", transferCode: record.get("transfer_code") || "", proof: record.get("proof") || "", note: record.get("note") || "", reviewedBy: record.get("reviewed_by") || "", reviewedAt: record.get("reviewed_at") || "", rejectionReason: record.get("rejection_reason") || "", gatewayTransactionId: record.get("gateway_transaction_id") || "", idempotencyKey: record.get("idempotency_key") || "", created: record.get("created"), updated: record.get("updated") })
   const start = (page - 1) * perPage
   return c.json(200, { page, perPage, totalItems: records.length, items: records.slice(start, start + perPage).map(toJson) })
+})
+
+routerAdd("POST", "/api/wallet/topups/{topupId}/cancel", (c) => {
+  const info = c.requestInfo()
+  const auth = info.auth || c.auth
+  if (!auth) throw new UnauthorizedError("Cần đăng nhập")
+  const store = String(auth.get("store") || "")
+  const topupId = String(c.request.url.path).split("/")[4] || ""
+  const topup = $app.findRecordById("wallet_topup_requests", topupId)
+  if (!store || topup.get("store") !== store || topup.get("user") !== auth.id) throw new ForbiddenError("Yêu cầu nạp không hợp lệ")
+  if (topup.get("status") !== "pending") return c.json(200, { topup: { id: topup.id, status: topup.get("status") } })
+  topup.set("status", "expired")
+  $app.save(topup)
+  return c.json(200, { topup: { id: topup.id, status: topup.get("status") } })
 })
 
 routerAdd("GET", "/api/admin/wallet-topups", (c) => {

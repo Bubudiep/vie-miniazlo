@@ -36,7 +36,7 @@ const sequentialTableName = async (bill: TableBill) => {
     const tableMap = await tableService.getMap();
     const tables = [...tableMap.tables].sort((a, b) => a.row_number - b.row_number || a.position - b.position || a.name.localeCompare(b.name, "vi"));
     const index = tables.findIndex((table) => table.id === bill.table);
-    return { ...bill, tableName: index >= 0 ? `Bàn ${index + 1}` : fallbackName };
+    return { ...bill, tableName: index >= 0 ? (tables[index].name || `Bàn ${index + 1}`) : fallbackName };
   } catch {
     return { ...bill, tableName: fallbackName };
   }

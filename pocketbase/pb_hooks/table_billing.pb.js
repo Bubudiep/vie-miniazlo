@@ -228,7 +228,7 @@ routerAdd("GET", "/api/table-billing/map", (c) => {
     layout: { rowCount, tablesPerRow: counts },
     tables: tables.map((table, index) => ({
       ...table.publicExport(),
-      name: "Bàn " + (index + 1),
+      name: String(table.get("name") || "Bàn " + (index + 1)),
       playingSince: playingBills[table.id] ? playingBills[table.id].get("started_at") || "" : ""
     })),
     activeBills: visibleBills.map((bill) => ({ id: bill.id, table: bill.get("table"), customer: bill.get("customer"), status: bill.get("status") }))
@@ -244,7 +244,7 @@ routerAdd("GET", "/api/table-billing/my-open", (c) => {
   const bills = $app.findRecordsByFilter("table_bills", "store = {:store} && customer = {:customer} && (status = 'open' || status = 'wallet_pending')", "-created", -1, 0, { store, customer: auth.id })
   const tables = $app.findRecordsByFilter("tables", "store = {:store}", "row_number,position,name", -1, 0, { store })
   const tableNames = {}
-  tables.forEach((table, index) => { tableNames[table.id] = "Bàn " + (index + 1) })
+  tables.forEach((table, index) => { tableNames[table.id] = String(table.get("name") || "Bàn " + (index + 1)) })
   return c.json(200, { items: bills.map((bill) => ({ id: bill.id, table: bill.get("table"), tableName: tableNames[bill.get("table")] || "Bàn", status: bill.get("status") })) })
 })
 
@@ -495,13 +495,15 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   const displayTableName = (app, tableId) => {
     const tables = app.findRecordsByFilter("tables", "store = {:store}", "row_number,position,name", -1, 0, { store })
     const index = tables.findIndex((table) => table.id === tableId)
-    return index >= 0 ? "Bàn " + (index + 1) : "Bàn"
+    if (index < 0) return "Bàn"
+    return String(tables[index].get("name") || "Bàn " + (index + 1))
   }
   const renumberStoreTables = (app) => {
     const tables = app.findRecordsByFilter("tables", "store = {:store}", "row_number,position,name", -1, 0, { store })
     const tableNames = {}
     tables.forEach((table, index) => {
-      const name = "Bàn " + (index + 1)
+      const currentName = String(table.get("name") || "")
+      const name = currentName && !/^Bàn \d+$/.test(currentName) ? currentName : "Bàn " + (index + 1)
       tableNames[table.id] = name
       if (table.get("name") === name) return
       table.set("name", name)
@@ -879,6 +881,18 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       txApp.save(table)
     })
     return c.json(200, { ok: true })
+  }
+
+  if (action === "rename_table") {
+    requireAdmin()
+    const name = String(input.name || "").trim()
+    if (!name || name.length > 80) throw new BadRequestError("Tên bàn phải từ 1 đến 80 ký tự")
+    $app.runInTransaction((txApp) => {
+      const table = findStoreTable(txApp, String(input.tableId || ""))
+      table.set("name", name)
+      txApp.save(table)
+    })
+    return c.json(200, { ok: true, name })
   }
 
   if (action === "start") {

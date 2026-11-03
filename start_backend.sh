@@ -3,7 +3,15 @@
 
 echo "Starting PocketBase server..."
 
-cd pocketbase
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  set -a
+  . "$SCRIPT_DIR/.env"
+  set +a
+fi
+
+cd "$SCRIPT_DIR/pocketbase"
 
 # Kill existing PocketBase process if running
 pkill -f pocketbase || true
