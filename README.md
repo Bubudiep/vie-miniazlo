@@ -19,10 +19,18 @@ Nếu cần thay đổi địa chỉ backend, đặt `VITE_API_BASE_URL` trong `
 
 ```powershell
 npm run build
-npm run preview
+npm run start
 ```
 
-Build tạo thư mục `dist/`. Triển khai nội dung thư mục này lên dịch vụ web tĩnh và bật SPA fallback về `index.html` để các đường dẫn như `/account` hoạt động khi tải lại trang. Cấu hình `VITE_API_BASE_URL` trước khi build.
+Build tạo thư mục `dist/`. Server production trong `server.mjs` phục vụ thư mục này, bật SPA fallback và proxy `/api/public/pb/*` tới PocketBase nội bộ. Trình duyệt luôn dùng URL cùng nguồn `/api/public/pb`, không gọi trực tiếp `127.0.0.1` hoặc PocketBase public.
+
+Biến môi trường production:
+
+```env
+PB_URL=http://127.0.0.1:8390
+```
+
+Reverse proxy hoặc Cloudflare Tunnel chỉ cần trỏ `h2.chamcongchua.com` tới server web port `3300`.
 
 ## Đăng ký và phê duyệt
 

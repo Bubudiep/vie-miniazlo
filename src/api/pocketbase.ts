@@ -1,7 +1,9 @@
 import PocketBase from 'pocketbase';
 
 const apiBaseUrl = (
-  import.meta.env.VITE_API_BASE_URL?.trim() || 'http://127.0.0.1:8390'
+  typeof window !== 'undefined'
+    ? `${window.location.origin}/api/public/pb`
+    : import.meta.env.VITE_API_BASE_URL?.trim() || 'http://127.0.0.1:8390'
 ).replace(/\/+$/, '');
 
 const pb = new PocketBase(apiBaseUrl);

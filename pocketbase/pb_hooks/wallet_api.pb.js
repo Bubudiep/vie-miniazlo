@@ -699,6 +699,99 @@ routerAdd("POST", "/api/admin/wallets/promo-expiry-bulk", (c) => {
   return c.json(200, { updated })
 })
 
+routerAdd("POST", "/api/webhooks/sepay", (c) => {
+  const request = c.request
+  const headers = request.header
+  const rawBody = toString(request.body, 2 * 1024 * 1024)
+  const signature = String(headers.get("X-SePay-Signature") || "").trim()
+  const timestamp = String(headers.get("X-SePay-Timestamp") || "").trim()
+  const secret = String($os.getenv("SEPAY_WEBHOOK_SECRET") || "").trim()
+  if (!secret) throw new Error("SEPAY_WEBHOOK_SECRET chưa được cấu hình trên server")
+  const timestampNumber = Number(timestamp)
+  if (!/^\d+$/.test(timestamp) || !Number.isSafeInteger(timestampNumber) || Math.abs(Math.floor(Date.now() / 1000) - timestampNumber) > 300) throw new UnauthorizedError("Webhook hết hạn")
+  const expected = "sha256=" + $security.hs256(timestamp + "." + rawBody, secret)
+  if (!signature || !$security.equal(expected, signature)) throw new UnauthorizedError("Chữ ký webhook không hợp lệ")
+  let payload
+  try { payload = JSON.parse(rawBody) } catch (e) { throw new BadRequestError("Payload webhook không hợp lệ") }
+
+  const provider = "sepay"
+  const eventKey = String(payload.id || payload.referenceCode || "").trim()
+  const gatewayId = String(payload.id || payload.referenceCode || "").trim()
+  const accountNumber = String(payload.accountNumber || "").trim()
+  const content = String(payload.content || payload.description || "").trim()
+  const transferType = String(payload.transferType || "").trim().toLowerCase()
+  const amount = Number(payload.transferAmount)
+  if (!eventKey || !gatewayId || !accountNumber || !Number.isSafeInteger(amount) || amount <= 0) throw new BadRequestError("Thiếu dữ liệu giao dịch webhook")
+
+  let duplicate = null
+  try { duplicate = $app.findFirstRecordByFilter("wallet_webhook_events", "provider = {:provider} && event_key = {:eventKey}", { provider, eventKey }) } catch (e) {}
+  if (duplicate) return c.json(200, { success: true, duplicate: true })
+
+  const event = new Record($app.findCollectionByNameOrId("wallet_webhook_events"))
+  event.set("provider", provider)
+  event.set("event_key", eventKey)
+  event.set("gateway_transaction_id", gatewayId)
+  event.set("account_number", accountNumber)
+  event.set("amount", amount)
+  event.set("transfer_content", content.slice(0, 500))
+  event.set("received_at", new Date().toISOString())
+  event.set("payload_hash", $security.sha256(rawBody))
+  event.set("status", transferType === "in" ? "received" : "ignored")
+
+  if (transferType !== "in") {
+    event.set("failure_reason", "Không phải giao dịch tiền vào")
+    $app.save(event)
+    return c.json(200, { success: true, ignored: true })
+  }
+
+  let settingsRecord = null
+  try { settingsRecord = $app.findFirstRecordByFilter("bill_payment_settings", "account_number = {:account}", { account: accountNumber }) } catch (e) {}
+  if (!settingsRecord) {
+    event.set("status", "failed")
+    event.set("failure_reason", "Không tìm thấy tài khoản nhận tiền đã cấu hình")
+    $app.save(event)
+    return c.json(200, { success: true, matched: false })
+  }
+  const store = String(settingsRecord.get("store") || "")
+  const topups = $app.findRecordsByFilter("wallet_topup_requests", "store = {:store} && status = 'pending'", "-created", 200, 0, { store })
+  const normalizedContent = content.toUpperCase().replace(/\s+/g, "")
+  const match = topups.find((item) => normalizedContent.includes(String(item.get("transfer_code") || "").toUpperCase()))
+  if (!match) {
+    event.set("store", store)
+    event.set("status", "failed")
+    event.set("failure_reason", "Không tìm thấy yêu cầu nạp đang chờ với mã chuyển khoản")
+    $app.save(event)
+    return c.json(200, { success: true, matched: false })
+  }
+  if (Number(match.get("amount")) !== amount) {
+    event.set("store", store)
+    event.set("topup", match.id)
+    event.set("status", "failed")
+    event.set("failure_reason", "Số tiền chuyển khoản không khớp yêu cầu nạp")
+    $app.save(event)
+    return c.json(200, { success: true, matched: false })
+  }
+  let response
+  $app.runInTransaction((txApp) => {
+    const topup = txApp.findRecordById("wallet_topup_requests", match.id)
+    if (topup.get("status") !== "pending") throw new BadRequestError("Yêu cầu nạp đã được xử lý")
+    let wallet
+    try { wallet = txApp.findFirstRecordByFilter("wallets", "user = {:user} && store = {:store}", { user: topup.get("user"), store }) }
+    catch (e) { wallet = new Record(txApp.findCollectionByNameOrId("wallets")); wallet.set("user", topup.get("user")); wallet.set("store", store); wallet.set("main_balance", 0); txApp.save(wallet) }
+    const before = Number(wallet.get("main_balance")) || 0
+    wallet.set("main_balance", before + amount)
+    txApp.save(wallet)
+    const transaction = new Record(txApp.findCollectionByNameOrId("wallet_transactions"))
+    transaction.set("wallet", wallet.id); transaction.set("user", topup.get("user")); transaction.set("store", store); transaction.set("wallet_type", "main"); transaction.set("direction", "credit"); transaction.set("amount", amount); transaction.set("reason", "Nạp tiền SePay " + topup.get("transfer_code")); transaction.set("reference_type", "topup"); transaction.set("reference_id", topup.id); transaction.set("idempotency_key", "topup-" + topup.id); transaction.set("balance_before", before); transaction.set("balance_after", before + amount)
+    txApp.save(transaction)
+    topup.set("status", "paid"); topup.set("reviewed_at", new Date().toISOString()); topup.set("gateway_transaction_id", gatewayId); txApp.save(topup)
+    const txEvent = txApp.findRecordById("wallet_webhook_events", event.id)
+    txEvent.set("store", store); txEvent.set("topup", topup.id); txEvent.set("status", "processed"); txApp.save(txEvent)
+    response = { success: true, processed: true, topupId: topup.id }
+  })
+  return c.json(200, response)
+})
+
 routerAdd("POST", "/api/wallet/topups", (c) => {
   const info = c.requestInfo()
   const auth = info.auth || c.auth
