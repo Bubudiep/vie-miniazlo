@@ -3,7 +3,15 @@
 migrate((app) => {
   const collection = app.findCollectionByNameOrId("_pb_users_auth_")
 
-  collection.fields.addAt(11, new Field({
+  let existing = null
+  for (let i = 0; i < collection.fields.length; i++) {
+    const field = collection.fields[i]
+    if (field.id === "bool1791537000" || field.name === "is_system_admin") {
+      existing = field
+      break
+    }
+  }
+  if (!existing) collection.fields.addAt(11, new Field({
     "autogeneratePattern": "",
     "hidden": false,
     "id": "bool1791537000",
