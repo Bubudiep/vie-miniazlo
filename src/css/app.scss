@@ -15,6 +15,13 @@ html {
   color-scheme: light;
 }
 
+/* The product uses a light surface system. Do not inherit the phone's dark
+   preference, otherwise ZaUI/native controls can render dark surfaces. */
+html,
+body {
+  color-scheme: light;
+}
+
 body {
   min-width: 320px;
   overflow-x: hidden;
@@ -164,22 +171,3 @@ textarea::placeholder {
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  html { background: #0f172a; }
-  body {
-    color-scheme: dark;
-    background: #0f172a;
-    color: #e2e8f0;
-  }
-  :root {
-    --h2-surface: rgba(30, 41, 59, 0.78);
-    --h2-surface-strong: rgba(15, 23, 42, 0.92);
-    --h2-border: rgba(148, 163, 184, 0.2);
-    --h2-border-strong: rgba(148, 163, 184, 0.32);
-    --h2-shadow: 0 12px 32px rgba(0, 0, 0, 0.24), 0 2px 8px rgba(0, 0, 0, 0.16);
-    --h2-shadow-raised: 0 18px 44px rgba(0, 0, 0, 0.38), 0 4px 12px rgba(0, 0, 0, 0.2);
-  }
-  input,
-  select,
-  textarea { background-color: rgba(30, 41, 59, 0.82); color: #e2e8f0; }
-}
