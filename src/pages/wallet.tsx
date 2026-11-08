@@ -75,6 +75,14 @@ export default function WalletPage() {
   }, []);
 
   useEffect(() => {
+    if (!topupOpen || topup?.status !== "paid") return;
+    confirmedTransfer.current = true;
+    window.localStorage.removeItem(TOPUP_RESUME_KEY);
+    setTopupOpen(false);
+    openSnackbar({ text: `Nạp tiền thành công. Ví đã được cộng ${money(topup.amount)}.`, type: "success", position: "top" });
+  }, [openSnackbar, topup?.amount, topup?.status, topupOpen]);
+
+  useEffect(() => {
     if (loading) return;
     const topupId = searchParams.get("topupId");
     if (topupId) {
