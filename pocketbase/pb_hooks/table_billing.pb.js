@@ -42,13 +42,15 @@ routerAdd("GET", "/api/table-billing/history", (c) => {
   const search = String(query.search || "").trim().slice(0, 80)
   const page = Number(query.page || 1)
   const isAdmin = auth.get("role") === "admin"
+  const isStaff = auth.get("role") === "staff"
+  const canOperateBill = isAdmin || isStaff
   if (!Number.isSafeInteger(page) || page < 1) throw new BadRequestError("Trang lịch sử không hợp lệ")
   if (category && !["payment", "action"].includes(category)) throw new BadRequestError("Loại lịch sử không hợp lệ")
   if (billId) {
     const bill = $app.findRecordById("table_bills", billId)
     if (bill.get("store") !== store) throw new ForbiddenError("Hóa đơn khác cửa hàng")
-    if (!isAdmin && bill.get("customer") !== auth.id) throw new ForbiddenError("Không có quyền xem lịch sử hóa đơn")
-  } else if (!isAdmin) throw new ForbiddenError("Chỉ admin mới được xem lịch sử cửa hàng")
+    if (!canOperateBill && bill.get("customer") !== auth.id) throw new ForbiddenError("Không có quyền xem lịch sử hóa đơn")
+  } else if (!isAdmin && !(isStaff && category === "payment")) throw new ForbiddenError("Chỉ admin mới được xem lịch sử cửa hàng")
 
   let filter = "store = {:store} && event_type != 'payment_started'"
   const params = { store }
@@ -158,7 +160,9 @@ routerAdd("GET", "/api/table-billing/payment-settings", (c) => {
   return c.json(200, {
     bankId: settings ? settings.get("bank_id") || "" : "",
     accountNumber: settings ? settings.get("account_number") || "" : "",
-    accountName: settings ? settings.get("account_name") || "" : ""
+    accountName: settings ? settings.get("account_name") || "" : "",
+    sepayVirtualAccount: settings ? settings.get("sepay_virtual_account") || "" : "",
+    sepayBankCode: settings ? settings.get("sepay_bank_code") || "" : ""
   })
 })
 
@@ -174,11 +178,15 @@ routerAdd("PATCH", "/api/table-billing/payment-settings", (c) => {
   const bankId = String(input.bankId || "").trim()
   const accountNumber = String(input.accountNumber || "").replace(/\s+/g, "")
   const accountName = String(input.accountName || "").trim()
+  const sepayVirtualAccount = String(input.sepayVirtualAccount || "").replace(/\s+/g, "").toUpperCase()
+  const sepayBankCode = String(input.sepayBankCode || "").trim().toUpperCase()
   const populatedFields = [bankId, accountNumber, accountName].filter(Boolean).length
   if (populatedFields !== 0 && populatedFields !== 3) throw new BadRequestError("Vui lòng nhập đầy đủ mã ngân hàng, số tài khoản và tên chủ tài khoản")
   if (bankId && !/^[a-z0-9_-]{2,40}$/i.test(bankId)) throw new BadRequestError("Mã ngân hàng VietQR không hợp lệ")
   if (accountNumber && !/^\d{4,24}$/.test(accountNumber)) throw new BadRequestError("Số tài khoản phải gồm 4 đến 24 chữ số")
   if (accountName.length > 100) throw new BadRequestError("Tên chủ tài khoản tối đa 100 ký tự")
+  if (sepayVirtualAccount && !/^[A-Z0-9]{4,24}$/.test(sepayVirtualAccount)) throw new BadRequestError("Số tài khoản ảo SePay không hợp lệ")
+  if (sepayVirtualAccount && !sepayBankCode) throw new BadRequestError("Vui lòng chọn ngân hàng nhận tiền trước khi cấu hình VA SePay")
 
   let settings = null
   try { settings = $app.findFirstRecordByFilter("bill_payment_settings", "store = {:store}", { store }) } catch (e) {}
@@ -187,11 +195,15 @@ routerAdd("PATCH", "/api/table-billing/payment-settings", (c) => {
   settings.set("bank_id", bankId)
   settings.set("account_number", accountNumber)
   settings.set("account_name", accountName)
+  settings.set("sepay_virtual_account", sepayVirtualAccount)
+  settings.set("sepay_bank_code", sepayVirtualAccount ? sepayBankCode : "")
   $app.save(settings)
   return c.json(200, {
     bankId: settings.get("bank_id") || "",
     accountNumber: settings.get("account_number") || "",
-    accountName: settings.get("account_name") || ""
+    accountName: settings.get("account_name") || "",
+    sepayVirtualAccount: settings.get("sepay_virtual_account") || "",
+    sepayBankCode: settings.get("sepay_bank_code") || ""
   })
 })
 
@@ -218,12 +230,13 @@ routerAdd("GET", "/api/table-billing/map", (c) => {
   for (const bill of activeBills) {
     playingBills[bill.get("table")] = bill
   }
+  const canOperateBill = ["admin", "staff"].includes(String(auth.get("role") || ""))
   const visibleSessions = {}
-  if (auth.get("role") !== "admin") {
+  if (!canOperateBill) {
     const customerBills = $app.findRecordsByFilter("table_bills", "store = {:store} && customer = {:customer}", "created", -1, 0, { store, customer: auth.id })
     customerBills.forEach((bill) => { visibleSessions[String(bill.get("session_id") || bill.id)] = true })
   }
-  const visibleBills = activeBills.filter((bill) => auth.get("role") === "admin" || bill.get("customer") === auth.id || visibleSessions[String(bill.get("session_id") || bill.id)])
+  const visibleBills = activeBills.filter((bill) => canOperateBill || bill.get("customer") === auth.id || visibleSessions[String(bill.get("session_id") || bill.id)])
   return c.json(200, {
     layout: { rowCount, tablesPerRow: counts },
     tables: tables.map((table, index) => ({
@@ -290,22 +303,31 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   const input = info.body || {}
   const action = String(input.action || "")
   const isAdmin = auth.get("role") === "admin"
+  const isStaff = auth.get("role") === "staff"
+  const canOperateBill = isAdmin || isStaff
   const requireAdmin = () => { if (!isAdmin) throw new ForbiddenError("Chỉ admin mới được thao tác") }
+  const requireBillOperator = () => { if (!canOperateBill) throw new ForbiddenError("Chỉ admin hoặc nhân viên mới được thao tác") }
+  const inventoryRequired = (app) => {
+    const value = app.findRecordById("stores", store).get("inventory_required")
+    return value === undefined || value === null || value === "" ? true : value === true || value === 1 || value === "true"
+  }
   const productOnHand = (app, productId) => app.findRecordsByFilter("inventory_movements", "store = {:store} && product = {:product}", "created", -1, 0, { store, product: productId }).reduce((sum, movement) => sum + (Number(movement.get("quantity_delta")) || 0), 0)
   const productReserved = (app, productId, excludeItemId = "") => {
     const bills = app.findRecordsByFilter("table_bills", "store = {:store} && (status = 'open' || status = 'wallet_pending')", "created", -1, 0, { store })
     const active = {}
     bills.forEach((bill) => { active[bill.id] = true })
     const items = app.findRecordsByFilter("table_bill_items", "store = {:store} && product = {:product}", "created", -1, 0, { store, product: productId })
-    return items.reduce((sum, item) => item.id === excludeItemId || !active[String(item.get("bill") || "")] || item.get("billing_unit") === "hour" ? sum : sum + Math.max(0, Number(item.get("quantity")) || 0), 0)
+    return items.reduce((sum, item) => item.id === excludeItemId || item.get("queue_status") === "cancelled" || !active[String(item.get("bill") || "")] || item.get("billing_unit") === "hour" ? sum : sum + Math.max(0, Number(item.get("quantity")) || 0), 0)
   }
   const ensureProductAvailable = (app, productId, quantity, excludeItemId = "") => {
+    if (!inventoryRequired(app)) return
     if (productOnHand(app, productId) - productReserved(app, productId, excludeItemId) < quantity) throw new BadRequestError("Tồn kho khả dụng không đủ cho mặt hàng này")
   }
   const recordInventorySales = (app, bill) => {
     const items = billItems(app, bill.id)
     const grouped = {}
     for (const item of items) {
+      if (item.get("queue_status") === "cancelled") continue
       const productId = String(item.get("product") || "")
       if (!productId || item.get("billing_unit") === "hour") continue
       try { if (app.findRecordById("products", productId).get("kind") === "service") continue } catch (e) {}
@@ -318,7 +340,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     for (const productId in grouped) {
       const sourceKey = "table-bill-" + bill.id + "-product-" + productId
       try { app.findFirstRecordByFilter("inventory_movements", "source_key = {:sourceKey}", { sourceKey }); continue } catch (e) {}
-      if (productOnHand(app, productId) < grouped[productId].quantity) throw new BadRequestError("Tồn kho thực tế không đủ để hoàn tất hóa đơn")
+      if (inventoryRequired(app) && productOnHand(app, productId) < grouped[productId].quantity) throw new BadRequestError("Tồn kho thực tế không đủ để hoàn tất hóa đơn")
       const movement = new Record(app.findCollectionByNameOrId("inventory_movements"))
       movement.set("store", store)
       movement.set("product", productId)
@@ -690,6 +712,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     }
   }
   const currentTotal = (app, bill) => billItems(app, bill.id).reduce((sum, item) => {
+    if (item.get("queue_status") === "cancelled") return sum
     const amount = lineAmount(item, Date.now(), bill).amount
     if (!Number.isFinite(amount)) throw new BadRequestError("Không thể tính tổng hóa đơn từ dữ liệu dòng hàng")
     return sum + amount
@@ -698,6 +721,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     const items = billItems(app, bill.id)
     let total = 0
     for (const item of items) {
+      if (item.get("queue_status") === "cancelled") continue
       if (item.get("billing_unit") === "hour" && !item.get("stopped_at")) item.set("stopped_at", new Date(at).toISOString())
       const calculated = lineAmount(item, at, bill)
       item.set("quantity", calculated.quantity)
@@ -716,7 +740,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       return { gross, result: discountAmount > 0 ? { discountAmount, total: Number(bill.get("total_amount")) || Math.max(0, gross - discountAmount), snapshot } : null }
     }
     const items = billItems(app, bill.id)
-    const lines = items.map((item) => {
+    const lines = items.filter((item) => item.get("queue_status") !== "cancelled").map((item) => {
       const calc = lineAmount(item, at, bill)
       let product = null
       try { product = item.get("product") ? app.findRecordById("products", item.get("product")) : null } catch (e) {}
@@ -735,14 +759,15 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     let total = 0
     const lines = items.map((item) => {
       const calc = lineAmount(item, Date.now(), bill)
-      total += calc.amount
-      return { id: item.id, product: item.get("product"), name: item.get("product_name"), billingUnit: item.get("billing_unit"), unitLabel: item.get("unit_label") || "", unitPrice: Number(item.get("unit_price")) || 0, quantity: calc.quantity, startedAt: item.get("started_at") || "", stoppedAt: item.get("stopped_at") || "", lineTotal: calc.amount, timePricing: item.get("billing_unit") === "hour" ? item.get("time_pricing") || null : null, timeBreakdown: calc.timeBreakdown }
+      if (item.get("queue_status") !== "cancelled") total += calc.amount
+      return { id: item.id, product: item.get("product"), name: item.get("product_name"), billingUnit: item.get("billing_unit"), unitLabel: item.get("unit_label") || "", unitPrice: Number(item.get("unit_price")) || 0, quantity: calc.quantity, startedAt: item.get("started_at") || "", stoppedAt: item.get("stopped_at") || "", lineTotal: item.get("queue_status") === "cancelled" ? 0 : calc.amount, queueStatus: item.get("queue_status") || "", queuedAt: item.get("queued_at") || "", queueCompletedAt: item.get("queue_completed_at") || "", queueCancelledAt: item.get("queue_cancelled_at") || "", timePricing: item.get("billing_unit") === "hour" ? item.get("time_pricing") || null : null, timeBreakdown: calc.timeBreakdown }
     })
     const promotionLines = items.map((item, index) => {
+      if (item.get("queue_status") === "cancelled") return null
       let product = null
       try { product = item.get("product") ? app.findRecordById("products", item.get("product")) : null } catch (e) {}
       return { ...lines[index], category: product ? product.get("category") || "" : "", categoryId: "" }
-    })
+    }).filter(Boolean)
     let promotionResult = null
     if (bill.get("status") === "open") {
       const manualId = bill.getBool("promotion_manual") ? String(bill.get("promotion") || "") : ""
@@ -757,12 +782,14 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     const payableAmount = Number.isFinite(storedPayableAmount) && storedPayableAmount >= 0 ? storedPayableAmount : Math.max(0, grossAmount - discountAmount)
     const status = String(bill.get("status") || "")
     const walletRequestedAt = String(bill.get("wallet_requested_at") || "")
-    return { id: bill.id, table: bill.get("table"), tableName: displayTableName(app, bill.get("table")), customer: bill.get("customer"), status, sessionId: billSessionId(bill), stoppedAt: bill.get("stopped_at") || "", paymentRequested: status === "wallet_pending" || (status === "stopped" && Boolean(walletRequestedAt)), paymentMethod: bill.get("payment_method") || "", totalAmount: payableAmount, requestedAmount: Number(bill.get("requested_amount")) || 0, grossAmount, discountAmount, promotion: promotionResult ? promotionSnapshot(promotionResult.promotion, app) : promotionObject(bill.getString("promotion_snapshot")), paymentError: bill.get("payment_error") || "", billingPaused: Boolean(bill.getString("billing_paused_at")), billingPausedAt: bill.getString("billing_paused_at") || "", startedAt: bill.get("started_at"), paidAt: bill.get("paid_at") || "", items: lines }
+    let paidByName = ""
+    try { const paidBy = String(bill.get("paid_by") || ""); if (paidBy) { const user = app.findRecordById("users", paidBy); paidByName = user.get("fullname") || user.get("username") || "" } } catch (e) {}
+    return { id: bill.id, table: bill.get("table"), tableName: displayTableName(app, bill.get("table")), customer: bill.get("customer"), status, sessionId: billSessionId(bill), stoppedAt: bill.get("stopped_at") || "", paymentRequested: status === "wallet_pending" || (status === "stopped" && Boolean(walletRequestedAt)), paymentMethod: bill.get("payment_method") || "", totalAmount: payableAmount, requestedAmount: Number(bill.get("requested_amount")) || 0, grossAmount, discountAmount, promotion: promotionResult ? promotionSnapshot(promotionResult.promotion, app) : promotionObject(bill.getString("promotion_snapshot")), paymentError: bill.get("payment_error") || "", billingPaused: Boolean(bill.getString("billing_paused_at")), billingPausedAt: bill.getString("billing_paused_at") || "", startedAt: bill.get("started_at"), paidAt: bill.get("paid_at") || "", cashReceived: Number(bill.get("cash_received")) || 0, paidByName, items: lines }
   }
 
   if (action === "session_summary") {
     const bill = findStoreBill($app, String(input.billId || ""))
-    if (!isAdmin && !canViewBill($app, bill, auth.id)) throw new ForbiddenError("Không có quyền xem phiên hóa đơn")
+    if (!canOperateBill && !canViewBill($app, bill, auth.id)) throw new ForbiddenError("Không có quyền xem phiên hóa đơn")
     const bills = sessionBills($app, bill)
     const items = bills.map((item) => {
       const value = detail($app, item)
@@ -781,8 +808,34 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       bill = findActiveBill($app, table.id)
       if (!bill) throw new BadRequestError("Không tìm thấy hóa đơn đang mở")
     } else throw new BadRequestError("Thiếu mã hóa đơn hoặc bàn")
-    if (!isAdmin && !canViewBill($app, bill, auth.id)) throw new ForbiddenError("Không có quyền xem hóa đơn")
+    if (!canOperateBill && !canViewBill($app, bill, auth.id)) throw new ForbiddenError("Không có quyền xem hóa đơn")
     return c.json(200, { ok: true, bill: detail($app, bill) })
+  }
+
+  if (action === "queue_list") {
+    requireBillOperator()
+    const status = input.history === true ? "done" : "pending"
+    const records = $app.findRecordsByFilter("table_bill_items", "store = {:store} && queue_status = {:status}", status === "pending" ? "queued_at,created" : "-queue_completed_at", 500, 0, { store, status })
+    const tables = $app.findRecordsByFilter("tables", "store = {:store}", "row_number,position,name", -1, 0, { store })
+    const tableNames = {}
+    tables.forEach((table, index) => { tableNames[table.id] = String(table.get("name") || "Bàn " + (index + 1)) })
+    const actorByItem = {}
+    if (status === "done") {
+      const events = $app.findRecordsByFilter("table_bill_events", "store = {:store} && event_type = 'queue_completed'", "-happened_at", 5000, 0, { store })
+      for (const event of events) {
+        try {
+          const itemId = JSON.parse(event.getString("details") || "{}").itemId
+          if (itemId && !actorByItem[itemId]) actorByItem[itemId] = event.get("actor_name") || ""
+        } catch (e) {}
+      }
+    }
+    const items = records.flatMap((item) => {
+      let bill
+      try { bill = $app.findRecordById("table_bills", item.get("bill")) } catch (e) { return [] }
+      if (status === "pending" && !["open", "wallet_pending"].includes(String(bill.get("status")))) return []
+      return [{ id: item.id, billId: bill.id, billStatus: bill.get("status"), tableName: tableNames[bill.get("table")] || "Bàn", name: item.get("product_name"), quantity: Number(item.get("quantity")) || 0, unitLabel: item.get("unit_label") || "", queuedAt: item.get("queued_at") || "", completedAt: item.get("queue_completed_at") || "", actorName: actorByItem[item.id] || "" }]
+    })
+    return c.json(200, { items })
   }
 
   if (action === "apply_promotion") {
@@ -796,16 +849,17 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       const calc = lineAmount(item, now, bill)
       let product = null
       try { product = item.get("product") ? $app.findRecordById("products", item.get("product")) : null } catch (e) {}
-      return { product: item.get("product"), billingUnit: item.get("billing_unit"), unitPrice: Number(item.get("unit_price")) || 0, quantity: calc.quantity, lineTotal: calc.amount, category: product ? product.get("category") || "" : "", categoryId: "" }
+      return item.get("queue_status") === "cancelled" ? null : { product: item.get("product"), billingUnit: item.get("billing_unit"), unitPrice: Number(item.get("unit_price")) || 0, quantity: calc.quantity, lineTotal: calc.amount, category: product ? product.get("category") || "" : "", categoryId: "" }
     })
-    const gross = lines.reduce((sum, line) => sum + Math.max(0, Number(line.lineTotal) || 0), 0)
+    const eligibleLines = lines.filter(Boolean)
+    const gross = eligibleLines.reduce((sum, line) => sum + Math.max(0, Number(line.lineTotal) || 0), 0)
     if (!promotionId) {
       bill.set("promotion_manual", false)
       savePromotionState(bill, null, gross)
       $app.save(bill)
       return c.json(200, { ok: true, bill: detail($app, bill), cleared: true })
     }
-    const result = findPromotionForBill($app, store, bill, lines, gross, now, promotionId, false)
+    const result = findPromotionForBill($app, store, bill, eligibleLines, gross, now, promotionId, false)
     if (!result) throw new BadRequestError("Khuyến mại không hợp lệ hoặc chưa đủ điều kiện")
     bill.set("promotion_manual", true)
     savePromotionState(bill, result, gross)
@@ -1120,7 +1174,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     let billId = ""
     $app.runInTransaction((txApp) => {
       const bill = findStoreBill(txApp, String(input.billId || ""))
-      if (auth.get("role") !== "admin" && bill.get("customer") !== auth.id) throw new ForbiddenError("Chỉ admin hoặc khách của bàn mới được thêm mặt hàng")
+      if (!canOperateBill && bill.get("customer") !== auth.id) throw new ForbiddenError("Chỉ admin, nhân viên hoặc khách của bàn mới được thêm mặt hàng")
       if (bill.get("status") !== "open") throw new BadRequestError("Hóa đơn không ở trạng thái có thể chỉnh sửa")
       if (bill.getString("billing_paused_at")) throw new BadRequestError("Hãy tiếp tục tính tiền trước khi thêm mặt hàng")
       const product = txApp.findRecordById("products", String(input.productId || ""))
@@ -1149,6 +1203,8 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       item.set("started_at", unit === "hour" ? selectedAt : "")
       item.set("paused_seconds_at_start", Number(bill.get("paused_seconds")) || 0)
       item.set("line_total", unit === "hour" ? 0 : Math.round(price * quantity))
+      item.set("queue_status", "pending")
+      item.set("queued_at", selectedAt)
       txApp.save(item)
       if (!bill.get("started_at")) bill.set("started_at", selectedAt)
       bill.set("total_amount", currentTotal(txApp, bill))
@@ -1159,8 +1215,30 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     return c.json(200, { ok: true, bill: detail($app, $app.findRecordById("table_bills", billId)) })
   }
 
+  if (action === "queue_done" || action === "queue_cancel") {
+    requireBillOperator()
+    let billId = ""
+    $app.runInTransaction((txApp) => {
+      const bill = findStoreBill(txApp, String(input.billId || ""))
+      if (bill.get("status") !== "open") throw new BadRequestError("Chỉ xử lý món trên hóa đơn đang mở")
+      const item = txApp.findRecordById("table_bill_items", String(input.itemId || ""))
+      if (item.get("bill") !== bill.id || item.get("store") !== store) throw new ForbiddenError("Món không thuộc hóa đơn của cửa hàng")
+      if (item.get("queue_status") !== "pending") throw new BadRequestError("Món đã được người khác xử lý")
+      const completed = action === "queue_done"
+      const now = new Date().toISOString()
+      item.set("queue_status", completed ? "done" : "cancelled")
+      item.set(completed ? "queue_completed_at" : "queue_cancelled_at", now)
+      txApp.save(item)
+      if (!completed) bill.set("total_amount", currentTotal(txApp, bill))
+      txApp.save(bill)
+      recordEvent(txApp, { store, billId: bill.id, tableName: displayTableName(txApp, bill.get("table")), category: "action", eventType: completed ? "queue_completed" : "queue_cancelled", title: (completed ? "Hoàn thành " : "Hủy ") + item.get("product_name"), actor: auth, details: { itemId: item.id, productName: item.get("product_name"), quantity: Number(item.get("quantity")) || 0 } })
+      billId = bill.id
+    })
+    return c.json(200, { ok: true, bill: detail($app, $app.findRecordById("table_bills", billId)) })
+  }
+
   if (action === "update_item") {
-    requireAdmin()
+    requireBillOperator()
     let billId = ""
     $app.runInTransaction((txApp) => {
       const bill = findStoreBill(txApp, String(input.billId || ""))
@@ -1187,7 +1265,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   }
 
   if (action === "update_item_time") {
-    requireAdmin()
+    requireBillOperator()
     let billId = ""
     $app.runInTransaction((txApp) => {
       const bill = findStoreBill(txApp, String(input.billId || ""))
@@ -1222,7 +1300,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   }
 
   if (action === "delete_item") {
-    requireAdmin()
+    requireBillOperator()
     let billId = ""
     $app.runInTransaction((txApp) => {
       const bill = findStoreBill(txApp, String(input.billId || ""))
@@ -1319,7 +1397,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   }
 
   if (action === "pay_manual") {
-    requireAdmin()
+    requireBillOperator()
     const discountPercent = paymentDiscountPercent()
     const discountNote = paymentDiscountNote()
     const paymentMethod = String(input.paymentMethod || "")
@@ -1350,6 +1428,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       bill.set("total_amount", total)
       bill.set("requested_amount", amountBeforePaymentDiscount)
       bill.set("payment_method", paymentMethod)
+      bill.set("cash_received", paymentMethod === "cash" ? cashReceived : 0)
       bill.set("paid_by", auth.id)
       bill.set("paid_at", new Date(now).toISOString())
       bill.set("payment_error", "")
@@ -1480,6 +1559,15 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       result = { ok: true, alreadyPaid: false, promoUsed, mainUsed, discountAmount, paymentDiscountPercent: discountPercent, paymentDiscountAmount, amountBeforePaymentDiscount, bill: detail(txApp, bill) }
     })
     return c.json(result.ok ? 200 : 409, result)
+  }
+
+  if (action === "print") {
+    requireBillOperator()
+    const bill = findStoreBill($app, String(input.billId || ""))
+    if (bill.get("status") !== "paid") throw new BadRequestError("Chỉ in hóa đơn đã thanh toán")
+    const prior = $app.findRecordsByFilter("table_bill_events", "store = {:store} && bill_id = {:bill} && event_type = 'bill_printed'", "created", 1, 0, { store, bill: bill.id })
+    recordEvent($app, { store, billId: bill.id, tableName: displayTableName($app, bill.get("table")), category: "action", eventType: prior.length ? "bill_reprinted" : "bill_printed", title: prior.length ? "In lại hóa đơn" : "In hóa đơn", actor: auth, paymentMethod: bill.get("payment_method") || "", amount: Number(bill.get("total_amount")) || 0, details: {} })
+    return c.json(200, { ok: true, bill: detail($app, bill), reprinted: prior.length > 0 })
   }
 
   throw new BadRequestError("Thao tác hóa đơn không hợp lệ")

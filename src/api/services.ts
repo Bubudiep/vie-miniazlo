@@ -1,4 +1,4 @@
-import pb, { Store, User, Product, ProductInput, ProductCategory, Table, TableLayout, TableMap, TableBill, TableBillSessionSummary, TableBillCustomer, TableBillProduct, TableBillHistoryEvent, TableBillingReport, AdminDashboardReport, InventoryItem, InventoryMovement, Customer, WalletOrder, WalletSummary, WalletTransactionPage, WalletUser, WalletTopup, WalletTopupCreateResult, WalletTopupPayment, XuAdminUser, XuCheckinResult, XuRedemption, XuReferralSummary, XuReward, XuSettings, XuSummary, XuTransactionPage, BillPaymentSettings, AdminNotification, Promotion, CustomerSegmentData } from './pocketbase';
+import pb, { Store, User, Product, ProductInput, ProductCategory, Table, TableLayout, TableMap, TableBill, TableBillSessionSummary, TableBillCustomer, TableBillProduct, TableBillHistoryEvent, TableBillingReport, AdminDashboardReport, InventoryItem, InventoryMovement, InventorySettings, Customer, WalletOrder, WalletSummary, WalletTransactionPage, WalletUser, WalletTopup, WalletTopupCreateResult, WalletTopupPayment, XuAdminUser, XuCheckinResult, XuRedemption, XuReferralSummary, XuReward, XuSettings, XuSummary, XuTransactionPage, BillPaymentSettings, AdminNotification, Promotion, CustomerSegmentData, StaffAccount, StaffQueueItem, TableCanvasPosition, UserTableLayout } from './pocketbase';
 
 export const registrationAdminService = {
   get() {
@@ -9,6 +9,15 @@ export const registrationAdminService = {
   },
   approve(id: string) {
     return pb.send(`/api/admin/registration/${encodeURIComponent(id)}/approve`, { method: 'POST' });
+  },
+};
+
+export const staffAdminService = {
+  list(query = '') {
+    return pb.send<{ items: StaffAccount[] }>(`/api/admin/staff?q=${encodeURIComponent(query)}`, { method: 'GET' });
+  },
+  update(id: string, input: { role?: 'staff' | 'user'; locked?: boolean }) {
+    return pb.send<{ id: string; role: StaffAccount['role']; locked: boolean }>(`/api/admin/staff/${encodeURIComponent(id)}`, { method: 'PATCH', body: input });
   },
 };
 
@@ -159,10 +168,31 @@ export const tableService = {
 
   async rename(id: string, name: string) {
     return pb.send<{ ok: boolean; name: string }>('/api/table-billing/action', { method: 'POST', body: { action: 'rename_table', tableId: id, name } });
+  },
+
+  async getUserLayout(storeId: string, userId: string) {
+    try {
+      return await pb.collection('user_table_layouts').getFirstListItem<UserTableLayout>(`store="${storeId}" && user="${userId}"`);
+    } catch (error: any) {
+      if (error?.status === 404) return null;
+      throw error;
+    }
+  },
+
+  async saveUserLayout(storeId: string, userId: string, positions: Record<string, TableCanvasPosition>) {
+    const current = await this.getUserLayout(storeId, userId);
+    if (current) return pb.collection('user_table_layouts').update<UserTableLayout>(current.id, { positions });
+    return pb.collection('user_table_layouts').create<UserTableLayout>({ store: storeId, user: userId, positions });
   }
 };
 
 export const tableBillingService = {
+  async getQueue(history = false) {
+    return pb.send<{ items: StaffQueueItem[] }>('/api/table-billing/action', { method: 'POST', body: { action: 'queue_list', history } });
+  },
+  async updateQueue(billId: string, itemId: string, action: 'queue_done' | 'queue_cancel') {
+    return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action, billId, itemId } });
+  },
   async getMyOpen() {
     return pb.send<{ items: Pick<TableBill, 'id' | 'table' | 'tableName' | 'status'>[] }>('/api/table-billing/my-open', { method: 'GET' });
   },
@@ -219,11 +249,14 @@ export const tableBillingService = {
   async requestTransfer(billId: string) {
     return pb.send<{ ok: boolean; alreadyRequested: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'request_transfer', billId } });
   },
-  async payManual(billId: string, paymentMethod: 'cash' | 'transfer', cashReceived?: number, paymentDiscountPercent = 0, paymentDiscountNote = '') {
-    return pb.send<{ ok: boolean; bill: TableBill; change?: number; discountAmount?: number; paymentDiscountPercent?: number; paymentDiscountAmount?: number }>('/api/table-billing/action', { method: 'POST', body: { action: 'pay_manual', billId, paymentMethod, paymentDiscountPercent, ...(paymentDiscountNote ? { paymentDiscountNote } : {}), ...(cashReceived === undefined ? {} : { cashReceived }) } });
+  async payManual(billId: string, paymentMethod: 'cash' | 'transfer', cashReceived?: number, paymentDiscountPercent?: number, paymentDiscountNote = '') {
+    return pb.send<{ ok: boolean; bill: TableBill; change?: number; discountAmount?: number; paymentDiscountPercent?: number; paymentDiscountAmount?: number }>('/api/table-billing/action', { method: 'POST', body: { action: 'pay_manual', billId, paymentMethod, ...(paymentDiscountPercent === undefined ? {} : { paymentDiscountPercent }), ...(paymentDiscountNote ? { paymentDiscountNote } : {}), ...(cashReceived === undefined ? {} : { cashReceived }) } });
   },
   async approveWallet(billId: string, paymentDiscountPercent = 0, paymentDiscountNote = '') {
     return pb.send<{ ok: boolean; alreadyPaid: boolean; promoUsed?: number; mainUsed?: number; error?: string; bill: TableBill; discountAmount?: number; paymentDiscountPercent?: number; paymentDiscountAmount?: number }>('/api/table-billing/action', { method: 'POST', body: { action: 'approve_wallet', billId, paymentDiscountPercent, ...(paymentDiscountNote ? { paymentDiscountNote } : {}) } });
+  },
+  async recordPrint(billId: string) {
+    return pb.send<{ ok: boolean; bill: TableBill; reprinted: boolean }>('/api/table-billing/action', { method: 'POST', body: { action: 'print', billId } });
   }
 };
 
@@ -247,6 +280,12 @@ export const tableBillHistoryService = {
 };
 
 export const inventoryService = {
+  getSettings() {
+    return pb.send<InventorySettings>('/api/admin/inventory/settings', { method: 'GET' });
+  },
+  saveSettings(inventoryRequired: boolean) {
+    return pb.send<InventorySettings>('/api/admin/inventory/settings', { method: 'PATCH', body: { inventoryRequired } });
+  },
   async list(search = '') {
     const query = search ? `?search=${encodeURIComponent(search)}` : '';
     return pb.send<{ items: InventoryItem[]; movements: InventoryMovement[] }>(`/api/admin/inventory${query}`, { method: 'GET' });

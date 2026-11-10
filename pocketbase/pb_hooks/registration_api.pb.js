@@ -187,3 +187,50 @@ routerAdd("POST", "/api/admin/registration/{id}/approve", (c) => {
   })
   return c.json(200, result)
 })
+
+routerAdd("GET", "/api/admin/staff", (c) => {
+  const info = c.requestInfo()
+  const auth = info.auth || c.auth
+  if (!auth) throw new UnauthorizedError("Cần đăng nhập")
+  if (auth.get("role") !== "admin" || !auth.get("store")) throw new ForbiddenError("Chỉ admin cửa hàng mới được thao tác")
+  const store = String(auth.get("store"))
+  const query = String((info.query || {}).q || "").trim().slice(0, 80)
+  let filter = "store = {:store}"
+  const params = { store }
+  if (query) {
+    filter += " && (fullname ~ {:query} || username ~ {:query} || phone ~ {:query})"
+    params.query = query
+  }
+  const users = $app.findRecordsByFilter("users", filter, "fullname,username", 200, 0, params)
+  return c.json(200, { items: users.map((user) => ({
+    id: user.id,
+    username: user.get("username") || "",
+    fullname: user.get("fullname") || "",
+    phone: user.get("phone") || "",
+    role: user.get("role") || "user",
+    approved: user.getBool("is_approved"),
+    locked: user.getBool("is_locked")
+  })) })
+})
+
+routerAdd("PATCH", "/api/admin/staff/{id}", (c) => {
+  const info = c.requestInfo()
+  const auth = info.auth || c.auth
+  if (!auth) throw new UnauthorizedError("Cần đăng nhập")
+  if (auth.get("role") !== "admin" || !auth.get("store")) throw new ForbiddenError("Chỉ admin cửa hàng mới được thao tác")
+  const input = info.body || {}
+  const target = $app.findRecordById("users", c.request.pathValue("id"))
+  if (target.get("store") !== auth.get("store")) throw new ForbiddenError("Tài khoản khác cửa hàng")
+  if (target.get("role") === "admin") throw new ForbiddenError("Không thay đổi quyền hoặc trạng thái tài khoản admin")
+  if (Object.prototype.hasOwnProperty.call(input, "role")) {
+    if (!target.getBool("is_approved")) throw new BadRequestError("Chỉ cấp quyền nhân viên cho tài khoản đã được duyệt")
+    if (!["staff", "user"].includes(String(input.role))) throw new BadRequestError("Vai trò không hợp lệ")
+    target.set("role", input.role)
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "locked")) {
+    if (typeof input.locked !== "boolean") throw new BadRequestError("Trạng thái khóa không hợp lệ")
+    target.set("is_locked", input.locked)
+  }
+  $app.save(target)
+  return c.json(200, { id: target.id, role: target.get("role"), locked: target.getBool("is_locked") })
+})

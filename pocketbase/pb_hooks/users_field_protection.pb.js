@@ -102,7 +102,7 @@ onRecordUpdateRequest((e) => {
     return e.next()
   }
 
-  const protectedFields = ["store", "role", "is_system_admin", "is_internal", "is_approved", "zalo_id", "employee_code", "xu_referral_code", "pending_xu_referral_code"]
+  const protectedFields = ["store", "role", "is_system_admin", "is_internal", "is_approved", "is_locked", "zalo_id", "employee_code", "xu_referral_code", "pending_xu_referral_code"]
   const original = e.record.original()
 
   // Check if any protected field is being changed

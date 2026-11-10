@@ -11,6 +11,7 @@ import WalletPage from "@/pages/wallet";
 import AdminWalletsPage from "@/pages/admin-wallets";
 import AdminWalletTopupsPage from "@/pages/admin-wallet-topups";
 import AdminRegistrationPage from "@/pages/admin-registration";
+import AdminStaffPage from "@/pages/admin-staff";
 import AdminProductsPage from "@/pages/admin-products";
 import AdminBillHistoryPage from "@/pages/admin-bill-history";
 import AdminReportsPage from "@/pages/admin-reports";
@@ -20,7 +21,9 @@ import AdminPromotionsPage from "@/pages/admin-promotions";
 import AdminCustomerSegmentsPage from "@/pages/admin-customer-segments";
 import AdminDashboardPage from "@/pages/admin-dashboard";
 import AdminInventoryPage from "@/pages/admin-inventory";
+import AdminInventorySettingsPage from "@/pages/admin-inventory-settings";
 import AdminSettingsPage from "@/pages/admin-settings";
+import StaffQueuePage from "@/pages/staff-queue";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
@@ -45,20 +48,17 @@ function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
         <Route
           path="/"
+          element={<Navigate to="/home" replace />}
+        />
+        <Route
+          path="/home"
           element={
             <ProtectedRoute>
               <TablesPage />
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/home"
-          element={
-            <ProtectedRoute>
-              <HomePage />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/news" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
         <Route
           path="/account"
           element={
@@ -70,12 +70,15 @@ function AppRoutes() {
         <Route path="/account/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
         <Route path="/account/xu" element={<ProtectedRoute><XuPage /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute><AdminDashboardPage /></ProtectedRoute>} />
+        <Route path="/staff/queue" element={<ProtectedRoute><StaffQueuePage /></ProtectedRoute>} />
         <Route path="/admin/inventory" element={<ProtectedRoute><AdminInventoryPage /></ProtectedRoute>} />
+        <Route path="/admin/inventory/settings" element={<ProtectedRoute><AdminInventorySettingsPage /></ProtectedRoute>} />
         <Route path="/admin/settings" element={<ProtectedRoute><AdminSettingsPage /></ProtectedRoute>} />
         <Route path="/admin/wallets" element={<ProtectedRoute><AdminWalletsPage /></ProtectedRoute>} />
         <Route path="/admin/wallet-topups" element={<ProtectedRoute><AdminWalletTopupsPage /></ProtectedRoute>} />
         <Route path="/admin/xu" element={<ProtectedRoute><AdminXuPage /></ProtectedRoute>} />
         <Route path="/admin/registration" element={<ProtectedRoute><AdminRegistrationPage /></ProtectedRoute>} />
+        <Route path="/admin/staff" element={<ProtectedRoute><AdminStaffPage /></ProtectedRoute>} />
         <Route path="/admin/products" element={<ProtectedRoute><AdminProductsPage /></ProtectedRoute>} />
         <Route path="/admin/bill-history" element={<ProtectedRoute><AdminBillHistoryPage /></ProtectedRoute>} />
         <Route path="/admin/reports" element={<ProtectedRoute><AdminReportsPage /></ProtectedRoute>} />

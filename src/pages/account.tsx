@@ -13,7 +13,7 @@ const PAGE_CLASS =
 function AccountPage() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
-  const [paymentSettings, setPaymentSettings] = useState<BillPaymentSettings>({ bankId: "", accountNumber: "", accountName: "" });
+  const [paymentSettings, setPaymentSettings] = useState<BillPaymentSettings>({ bankId: "", accountNumber: "", accountName: "", sepayVirtualAccount: "", sepayBankCode: "" });
   const [paymentSettingsLoading, setPaymentSettingsLoading] = useState(false);
   const [paymentSettingsError, setPaymentSettingsError] = useState("");
   const [savingPaymentSettings, setSavingPaymentSettings] = useState(false);
@@ -101,7 +101,7 @@ function AccountPage() {
     setSavingPaymentSettings(true);
     setPaymentSettingsError("");
     try {
-      setPaymentSettings(await billPaymentService.saveSettings({ ...paymentSettings, bankId: selectedBank?.bin || "" }));
+      setPaymentSettings(await billPaymentService.saveSettings({ ...paymentSettings, bankId: selectedBank?.bin || "", sepayBankCode: selectedBank?.code || paymentSettings.sepayBankCode }));
       openSnackbar({ text: "Đã lưu tài khoản nhận tiền QR", type: "success", position: "top" });
     } catch (error: any) {
       const message = error?.response?.message || error?.response?.data?.error || error?.message || "Không thể lưu tài khoản nhận tiền";
@@ -236,12 +236,13 @@ function AccountPage() {
 
           </div>
           {user.role === "admin" && <section className="mt-5 space-y-3 border-t border-black/5 pt-4 dark:border-white/10">
-            <div><Text.Title size="small">Tài khoản nhận tiền bill</Text.Title><Text size="xSmall" className="mt-1 block text-[#767a7f] dark:text-[#8f9499]">Thông tin này được dùng để tạo mã QR cho bill của cửa hàng.</Text></div>
+            <div><Text.Title size="small">Tài khoản nhận tiền</Text.Title><Text size="xSmall" className="mt-1 block text-[#767a7f] dark:text-[#8f9499]">Tài khoản ngân hàng dùng cho bill và VA SePay dùng riêng để nạp ví.</Text></div>
             {paymentSettingsLoading ? <div className="flex justify-center py-4"><Spinner /></div> : <>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Ngân hàng nhận tiền (BIN VietQR)<select value={selectedBank?.bin || ""} onChange={(event) => setPaymentSettings((current) => ({ ...current, bankId: event.target.value }))} disabled={banksLoading || !banks.length} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">{banksLoading ? "Đang tải ngân hàng..." : "Chọn ngân hàng"}</option>{banks.map((bank) => <option key={bank.bin} value={bank.bin}>{bank.shortName} · {bank.bin}</option>)}</select></label>
               {banksError && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{banksError}</div>}
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Số tài khoản<input autoComplete="off" inputMode="numeric" value={paymentSettings.accountNumber} onChange={(event) => setPaymentSettings((current) => ({ ...current, accountNumber: event.target.value }))} placeholder="Số tài khoản nhận tiền" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Tên chủ tài khoản<input autoComplete="off" value={paymentSettings.accountName} onChange={(event) => setPaymentSettings((current) => ({ ...current, accountName: event.target.value }))} placeholder="Tên in trên tài khoản ngân hàng" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Số tài khoản ảo SePay dùng để nạp ví<input autoComplete="off" value={paymentSettings.sepayVirtualAccount} onChange={(event) => setPaymentSettings((current) => ({ ...current, sepayVirtualAccount: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} placeholder="Ví dụ: 96247JQK98" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
               {paymentSettingsError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{paymentSettingsError}</div>}
               <button type="button" disabled={savingPaymentSettings || banksLoading || (hasPaymentDetails && !selectedBank)} onClick={() => void savePaymentSettings()} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-60">{savingPaymentSettings && <Spinner />}Lưu tài khoản nhận tiền</button>
             </>}

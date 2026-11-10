@@ -711,17 +711,20 @@ routerAdd("POST", "/api/webhooks/sepay", (c) => {
   if (!/^\d+$/.test(timestamp) || !Number.isSafeInteger(timestampNumber) || Math.abs(Math.floor(Date.now() / 1000) - timestampNumber) > 300) throw new UnauthorizedError("Webhook hết hạn")
   const expected = "sha256=" + $security.hs256(timestamp + "." + rawBody, secret)
   if (!signature || !$security.equal(expected, signature)) throw new UnauthorizedError("Chữ ký webhook không hợp lệ")
+  if (!rawBody.trim()) return c.json(200, { success: true, ignored: true, reason: "Payload kiểm tra rỗng" })
   let payload
   try { payload = JSON.parse(rawBody) } catch (e) { throw new BadRequestError("Payload webhook không hợp lệ") }
 
   const provider = "sepay"
-  const eventKey = String(payload.id || payload.referenceCode || "").trim()
-  const gatewayId = String(payload.id || payload.referenceCode || "").trim()
-  const accountNumber = String(payload.accountNumber || "").trim()
-  const content = String(payload.content || payload.description || "").trim()
-  const transferType = String(payload.transferType || "").trim().toLowerCase()
-  const amount = Number(payload.transferAmount)
-  if (!eventKey || !gatewayId || !accountNumber || !Number.isSafeInteger(amount) || amount <= 0) throw new BadRequestError("Thiếu dữ liệu giao dịch webhook")
+  const eventKey = String(payload.id || payload.referenceCode || payload.code || payload.transactionId || payload.transaction_id || "").trim()
+  const gatewayId = String(payload.id || payload.referenceCode || payload.code || payload.transactionId || payload.transaction_id || "").trim()
+  const accountNumber = String(payload.accountNumber || payload.account_number || payload.toAccountNumber || "").trim()
+  const subAccount = String(payload.subAccount || payload.sub_account || "").trim().toUpperCase()
+  const content = String(payload.content || payload.description || payload.transferContent || payload.transfer_content || "").trim()
+  const transferType = String(payload.transferType || payload.transfer_type || payload.type || "").trim().toLowerCase()
+  const amount = Number(payload.transferAmount ?? payload.amount ?? payload.transfer_amount)
+  // SePay's test payload can be empty. It is safe to acknowledge it because no wallet mutation is possible.
+  if (!eventKey || !gatewayId || !accountNumber || !Number.isSafeInteger(amount) || amount <= 0) return c.json(200, { success: true, ignored: true, reason: "Thiếu dữ liệu giao dịch" })
 
   let duplicate = null
   try { duplicate = $app.findFirstRecordByFilter("wallet_webhook_events", "provider = {:provider} && event_key = {:eventKey}", { provider, eventKey }) } catch (e) {}
@@ -747,8 +750,20 @@ routerAdd("POST", "/api/webhooks/sepay", (c) => {
   let settingsRecord = null
   try { settingsRecord = $app.findFirstRecordByFilter("bill_payment_settings", "account_number = {:account}", { account: accountNumber }) } catch (e) {}
   if (!settingsRecord) {
+    const virtualAccount = String(accountNumber || subAccount).toUpperCase()
+    try { settingsRecord = $app.findFirstRecordByFilter("bill_payment_settings", "sepay_virtual_account = {:account}", { account: virtualAccount }) } catch (e) {}
+  }
+  if (!settingsRecord) {
     event.set("status", "failed")
     event.set("failure_reason", "Không tìm thấy tài khoản nhận tiền đã cấu hình")
+    $app.save(event)
+    return c.json(200, { success: true, matched: false })
+  }
+  const configuredVirtualAccount = String(settingsRecord.get("sepay_virtual_account") || "").toUpperCase()
+  if (subAccount && configuredVirtualAccount && subAccount !== configuredVirtualAccount) {
+    event.set("store", settingsRecord.get("store"))
+    event.set("status", "failed")
+    event.set("failure_reason", "VA SePay không khớp tài khoản đã cấu hình")
     $app.save(event)
     return c.json(200, { success: true, matched: false })
   }
@@ -810,11 +825,14 @@ routerAdd("POST", "/api/wallet/topups", (c) => {
   let settingsRecord = null
   try { settingsRecord = $app.findFirstRecordByFilter("bill_payment_settings", "store = {:store}", { store }) } catch (e) {}
   if (!settingsRecord || !settingsRecord.get("bank_id") || !settingsRecord.get("account_number") || !settingsRecord.get("account_name")) throw new BadRequestError("Cửa hàng chưa cấu hình tài khoản nhận tiền QR")
-  const settings = { bankId: settingsRecord.get("bank_id"), accountNumber: settingsRecord.get("account_number"), accountName: settingsRecord.get("account_name") }
+  const virtualAccount = String(settingsRecord.get("sepay_virtual_account") || "").trim().toUpperCase()
+  const virtualBankCode = String(settingsRecord.get("sepay_bank_code") || "").trim().toUpperCase()
+  if (!/^[A-Z0-9]{4,24}$/.test(virtualAccount) || !/^[A-Z0-9]{2,20}$/.test(virtualBankCode)) throw new BadRequestError("Admin chưa cấu hình VA SePay trong mục Tài khoản")
+  const topupPayment = { bankId: virtualBankCode, accountNumber: virtualAccount, accountName: settingsRecord.get("account_name") || "" }
   const toJson = (record, user) => ({ id: record.id, store: record.get("store"), user: record.get("user"), username: user.get("username") || "", fullname: user.get("fullname") || "", amount: Number(record.get("amount")) || 0, status: record.get("status") || "pending", transferCode: record.get("transfer_code") || "", proof: record.get("proof") || "", note: record.get("note") || "", reviewedBy: record.get("reviewed_by") || "", reviewedAt: record.get("reviewed_at") || "", rejectionReason: record.get("rejection_reason") || "", gatewayTransactionId: record.get("gateway_transaction_id") || "", idempotencyKey: record.get("idempotency_key") || "", created: record.get("created"), updated: record.get("updated") })
   let existing = null
   try { existing = $app.findFirstRecordByFilter("wallet_topup_requests", "user = {:user} && store = {:store} && idempotency_key = {:key}", { user: auth.id, store, key: idempotencyKey }) } catch (e) {}
-  if (existing) return c.json(200, { topup: toJson(existing, auth), payment: settings, alreadyCreated: true })
+  if (existing) return c.json(200, { topup: toJson(existing, auth), payment: topupPayment, alreadyCreated: true })
   let transferCode = ""
   do {
     transferCode = "NAP" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase()
@@ -830,7 +848,7 @@ routerAdd("POST", "/api/wallet/topups", (c) => {
   topup.set("note", note)
   topup.set("idempotency_key", idempotencyKey)
   $app.save(topup)
-  return c.json(200, { topup: toJson(topup, auth), payment: settings, alreadyCreated: false })
+  return c.json(200, { topup: toJson(topup, auth), payment: topupPayment, alreadyCreated: false })
 })
 
 routerAdd("GET", "/api/wallet/topups", (c) => {

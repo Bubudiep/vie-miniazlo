@@ -7,10 +7,10 @@ import {
   RiDashboardLine,
   RiLayoutGridFill,
   RiLayoutGridLine,
-  RiHome9Fill,
-  RiHome9Line,
   RiNewspaperFill,
   RiNewspaperLine,
+  RiListCheck2,
+  RiListCheck,
 } from "react-icons/ri";
 
 interface TabItem {
@@ -22,13 +22,13 @@ interface TabItem {
 
 const TABS: TabItem[] = [
   {
-    path: "/home",
+    path: "/news",
     label: "Bảng tin",
     icon: <RiNewspaperLine size={28} />,
     activeIcon: <RiNewspaperFill size={28} />,
   },
   {
-    path: "/",
+    path: "/home",
     label: "Đặt bàn",
     icon: <RiLayoutGridLine size={28} />,
     activeIcon: <RiLayoutGridFill size={28} />,
@@ -60,13 +60,20 @@ const TabBar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const queueTab = {
+    path: "/staff/queue",
+    label: "Hàng chờ",
+    icon: <RiListCheck size={28} />,
+    activeIcon: <RiListCheck2 size={28} />,
+  };
   const tabs = useMemo(() => user?.role === "admin"
-    ? [...TABS.slice(0, 2), {
+    ? [...TABS.slice(0, 2), queueTab, {
       path: "/admin",
       label: "Quản trị",
       icon: <RiDashboardLine size={28} />,
       activeIcon: <RiDashboardFill size={28} />,
     }, TABS[2]]
+    : user?.role === "staff" ? [...TABS.slice(0, 2), queueTab, TABS[2]]
     : TABS, [user?.role]);
 
   const activeIndex = useMemo(() => {
@@ -119,6 +126,9 @@ const TabBar = () => {
             return (
               <div
                 key={tab.path}
+                role="button"
+                aria-label={tab.label}
+                title={tab.label}
                 onClick={() => handleNavigate(tab.path, index)}
                 className="relative z-10 flex-col flex flex-1 items-center justify-center py-1 h-[60px] "
               >
@@ -131,6 +141,7 @@ const TabBar = () => {
                 >
                   {active && tab.activeIcon ? tab.activeIcon : tab.icon}
                 </div>
+                {tab.path === "/staff/queue" && <span className={`text-[10px] font-semibold leading-none ${active ? "text-white" : "text-slate-500"}`}>Hàng chờ</span>}
               </div>
             );
           })}

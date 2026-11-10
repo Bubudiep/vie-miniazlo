@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Icon, Page, Sheet, Spinner, Text, useSnackbar } from "zmp-ui";
 import type { FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import { strToU8, zipSync } from "fflate";
 
 import { inventoryService } from "@/api/services";
 import type { InventoryItem, InventoryMovement } from "@/api/pocketbase";
@@ -13,6 +14,7 @@ import { formatMoneyInput, handleMoneyInput } from "@/utils/format";
 const money = (value: number) => `${Math.round(Number(value || 0)).toLocaleString("vi-VN")}đ`;
 const dateTime = (value: string) => new Date(value).toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 const messageOf = (error: any) => error?.response?.message || error?.response?.data?.error || error?.message || "Không thể hoàn tất thao tác kho";
+const xmlEscape = (value: string | number) => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 type MoveKind = "in" | "adjustment";
 
 export default function AdminInventoryPage() {
@@ -53,6 +55,39 @@ export default function AdminInventoryPage() {
     return items.filter((item) => !search || `${item.name} ${item.category}`.toLocaleLowerCase("vi").includes(search));
   }, [items, query]);
 
+  const exportMovements = () => {
+    const headers = ["Thời gian", "Mặt hàng", "Loại giao dịch", "Số lượng", "Giá nhập (VNĐ)", "Ghi chú", "Người thực hiện"];
+    const rows = movements.map((movement) => [
+      new Date(movement.occurredAt).toLocaleString("vi-VN"),
+      movement.productName,
+      movement.movementType === "sale" ? "Xuất bán" : movement.movementType === "in" ? "Nhập kho" : "Điều chỉnh",
+      movement.quantityDelta,
+      movement.unitCost,
+      movement.note,
+      movement.actorName,
+    ]);
+    const allRows: (string | number)[][] = [headers, ...rows];
+    const sheetRows = allRows.map((row, rowIndex) => `<row r="${rowIndex + 1}">${row.map((value, columnIndex) => {
+      const cell = `${String.fromCharCode(65 + columnIndex)}${rowIndex + 1}`;
+      return rowIndex > 0 && (columnIndex === 3 || columnIndex === 4)
+        ? `<c r="${cell}"><v>${Number(value) || 0}</v></c>`
+        : `<c r="${cell}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
+    }).join("")}</row>`).join("");
+    const files = {
+      "[Content_Types].xml": strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'),
+      "_rels/.rels": strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'),
+      "xl/workbook.xml": strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Lich su kho" sheetId="1" r:id="rId1"/></sheets></workbook>'),
+      "xl/_rels/workbook.xml.rels": strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'),
+      "xl/worksheets/sheet1.xml": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`),
+    };
+    const url = URL.createObjectURL(new Blob([zipSync(files)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `lich-su-kho-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const openMove = (item: InventoryItem, kind: MoveKind) => {
     setSelected(item); setMoveKind(kind); setDirection(1); setQuantity(""); setUnitCost(String(item.purchasePrice || "")); setNote("");
   };
@@ -81,7 +116,7 @@ export default function AdminInventoryPage() {
     <StoreHeader />
     <AdminNav />
     <main className="mx-auto w-full max-w-5xl space-y-5 px-4 py-4">
-      <header className="flex items-center justify-between gap-3"><div><Text.Title size="small" className="text-slate-900">Kho hàng</Text.Title><Text size="xSmall" className="mt-1 block text-slate-500">Tồn thực tế, số lượng đang giữ và lịch sử</Text></div><button type="button" aria-label="Tải lại" title="Tải lại" onClick={() => void load()} className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700"><Icon icon="zi-backup-arrow-solid" /></button></header>
+      <header className="flex items-center justify-between gap-3"><div><Text.Title size="small" className="text-slate-900">Kho hàng</Text.Title><Text size="xSmall" className="mt-1 block text-slate-500">Tồn thực tế, số lượng đang giữ và lịch sử</Text></div><div className="flex shrink-0 gap-2"><button type="button" aria-label="Thiết lập kho" title="Thiết lập kho" onClick={() => navigate("/admin/inventory/settings")} className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700"><Icon icon="zi-setting" /></button><button type="button" aria-label="Tải lại" title="Tải lại" onClick={() => void load()} className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700"><Icon icon="zi-backup-arrow-solid" /></button></div></header>
       <label className="relative block"><span className="sr-only">Tìm trong kho</span><Icon icon="zi-search" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm mặt hàng trong kho" className="min-h-11 w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-base" /></label>
       {loading ? <div className="flex justify-center py-12"><Spinner /></div> : visible.length === 0 ? <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">Chưa có mặt hàng trong kho. Hãy thêm mặt hàng ở mục Mặt hàng.</div> : <section className="space-y-2">
         {visible.map((item) => <article key={item.id} className="rounded-lg border border-slate-200 bg-white p-3">
@@ -91,7 +126,7 @@ export default function AdminInventoryPage() {
         </article>)}
       </section>}
 
-      <section className="space-y-2"><Text.Title size="small" className="text-slate-900">Biến động gần đây</Text.Title>{movements.length === 0 ? <div className="rounded-lg border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Chưa có giao dịch kho.</div> : <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">{movements.map((movement) => <article key={movement.id} className="flex items-center gap-3 px-3 py-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${movement.quantityDelta >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}><Icon icon={movement.quantityDelta >= 0 ? "zi-plus" : "zi-minus-circle"} /></span><div className="min-w-0 flex-1"><Text size="small" className="truncate font-semibold text-slate-900">{movement.productName}</Text><Text size="xSmall" className="mt-1 block text-slate-500">{movement.movementType === "sale" ? "Xuất bán" : movement.movementType === "in" ? "Nhập kho" : "Điều chỉnh"} · {dateTime(movement.occurredAt)}{movement.note ? ` · ${movement.note}` : ""}</Text></div><Text size="small" className={`shrink-0 font-bold ${movement.quantityDelta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{movement.quantityDelta > 0 ? "+" : ""}{movement.quantityDelta.toLocaleString("vi-VN")}</Text></article>)}</div>}</section>
+      <section className="space-y-2"><div className="flex items-center justify-between gap-3"><Text.Title size="small" className="text-slate-900">Biến động gần đây</Text.Title><button type="button" disabled={!movements.length} onClick={exportMovements} className="flex min-h-9 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 disabled:opacity-50"><Icon icon="zi-download" />Xuất Excel</button></div>{movements.length === 0 ? <div className="rounded-lg border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Chưa có giao dịch kho.</div> : <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">{movements.map((movement) => <article key={movement.id} className="flex items-center gap-3 px-3 py-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${movement.quantityDelta >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}><Icon icon={movement.quantityDelta >= 0 ? "zi-plus" : "zi-minus-circle"} /></span><div className="min-w-0 flex-1"><Text size="small" className="truncate font-semibold text-slate-900">{movement.productName}</Text><Text size="xSmall" className="mt-1 block text-slate-500">{movement.movementType === "sale" ? "Xuất bán" : movement.movementType === "in" ? "Nhập kho" : "Điều chỉnh"} · {dateTime(movement.occurredAt)}{movement.note ? ` · ${movement.note}` : ""}</Text></div><Text size="small" className={`shrink-0 font-bold ${movement.quantityDelta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{movement.quantityDelta > 0 ? "+" : ""}{movement.quantityDelta.toLocaleString("vi-VN")}</Text></article>)}</div>}</section>
     </main>
 
     <Sheet visible={!!selected} onClose={() => !saving && setSelected(null)} autoHeight swipeToClose>

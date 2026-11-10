@@ -31,6 +31,8 @@ export interface BillPaymentSettings {
   bankId: string;
   accountNumber: string;
   accountName: string;
+  sepayVirtualAccount: string;
+  sepayBankCode: string;
 }
 
 export interface AdminNotification {
@@ -51,9 +53,10 @@ export interface User {
   fullname?: string;
   zalo_id?: string;
   store?: string;
-  role?: 'admin' | 'user';
+  role?: 'admin' | 'staff' | 'user';
   verified: boolean;
   is_approved?: boolean;
+  is_locked?: boolean;
   created: string;
   updated: string;
 }
@@ -125,6 +128,20 @@ export interface TableLayout {
   tablesPerRow: number[];
 }
 
+export interface TableCanvasPosition {
+  x: number;
+  y: number;
+}
+
+export interface UserTableLayout {
+  id: string;
+  user: string;
+  store: string;
+  positions: Record<string, TableCanvasPosition>;
+  created: string;
+  updated: string;
+}
+
 export interface TableOpenBillSummary {
   id: string;
   table: string;
@@ -149,8 +166,25 @@ export interface TableBillItem {
   startedAt: string;
   stoppedAt?: string;
   lineTotal: number;
+  queueStatus?: '' | 'pending' | 'done' | 'cancelled';
+  queuedAt?: string;
+  queueCompletedAt?: string;
+  queueCancelledAt?: string;
   timePricing?: ProductTimePricing | null;
   timeBreakdown?: { type: 'first' | 'regular' | 'special'; label: string; startAt: string; endAt: string; durationMinutes: number; billedDurationMinutes: number; amount: number }[];
+}
+
+export interface StaffQueueItem {
+  id: string;
+  billId: string;
+  billStatus: TableBill['status'];
+  tableName: string;
+  name: string;
+  quantity: number;
+  unitLabel: string;
+  queuedAt: string;
+  completedAt: string;
+  actorName: string;
 }
 
 export interface TableBillSessionItem {
@@ -192,7 +226,19 @@ export interface TableBill {
   billingPausedAt?: string;
   startedAt: string;
   paidAt: string;
+  cashReceived?: number;
+  paidByName?: string;
   items: TableBillItem[];
+}
+
+export interface StaffAccount {
+  id: string;
+  username: string;
+  fullname: string;
+  phone: string;
+  role: 'admin' | 'staff' | 'user';
+  approved: boolean;
+  locked: boolean;
 }
 
 export interface PromotionSnapshot {
@@ -298,6 +344,10 @@ export interface InventoryMovement {
   note: string;
   actorName: string;
   occurredAt: string;
+}
+
+export interface InventorySettings {
+  inventoryRequired: boolean;
 }
 
 export interface AdminDashboardReport {

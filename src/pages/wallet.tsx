@@ -154,7 +154,7 @@ export default function WalletPage() {
   };
 
   const topupQrUrl = topup && topupPayment
-    ? `https://img.vietqr.io/image/${encodeURIComponent(topupPayment.bankId)}-${encodeURIComponent(topupPayment.accountNumber)}-compact2.png?amount=${topup.amount}&addInfo=${encodeURIComponent(topup.transferCode)}&accountName=${encodeURIComponent(topupPayment.accountName)}`
+    ? `https://vietqr.app/img?${new URLSearchParams({ bank: topupPayment.bankId, acc: topupPayment.accountNumber, template: "compact", amount: String(topup.amount), des: topup.transferCode, showinfo: "true", holder: topupPayment.accountName })}`
     : "";
   const statusLabel: Record<string, string> = { pending: "Chờ ngân hàng xác nhận", paid: "Đã cộng tiền", rejected: "Đã từ chối", expired: "Chưa thanh toán" };
 

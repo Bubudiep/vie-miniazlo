@@ -6,6 +6,8 @@ routerUse((c) => {
   const path = request.url.path
   const routes = {
     "GET /api/admin/inventory": true,
+    "GET /api/admin/inventory/settings": true,
+    "PATCH /api/admin/inventory/settings": true,
     "POST /api/admin/inventory/movement": true,
     "POST /api/admin/expenses": true,
     "GET /api/admin/dashboard": true
@@ -28,6 +30,11 @@ routerUse((c) => {
     { store, product: productId }
   ).reduce((sum, movement) => sum + (Number(movement.get("quantity_delta")) || 0), 0)
 
+  const inventoryRequired = () => {
+    const value = $app.findRecordById("stores", store).get("inventory_required")
+    return value === undefined || value === null || value === "" ? true : value === true || value === 1 || value === "true"
+  }
+
   const reservedQuantity = (app, productId) => {
     const bills = app.findRecordsByFilter("table_bills", "store = {:store} && (status = 'open' || status = 'wallet_pending')", "created", -1, 0, { store })
     const activeBills = {}
@@ -37,6 +44,17 @@ routerUse((c) => {
       if (!activeBills[String(item.get("bill") || "")] || item.get("billing_unit") === "hour") return sum
       return sum + Math.max(0, Number(item.get("quantity")) || 0)
     }, 0)
+  }
+
+  if (method === "GET" && path === "/api/admin/inventory/settings") return c.json(200, { inventoryRequired: inventoryRequired() })
+
+  if (method === "PATCH" && path === "/api/admin/inventory/settings") {
+    const input = info.body || {}
+    if (typeof input.inventoryRequired !== "boolean") throw new BadRequestError("Thiết lập tồn kho không hợp lệ")
+    const storeRecord = $app.findRecordById("stores", store)
+    storeRecord.set("inventory_required", input.inventoryRequired)
+    $app.save(storeRecord)
+    return c.json(200, { inventoryRequired: input.inventoryRequired })
   }
 
   if (method === "GET" && path === "/api/admin/inventory") {
