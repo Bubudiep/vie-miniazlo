@@ -166,7 +166,7 @@ export interface TableBillItem {
   startedAt: string;
   stoppedAt?: string;
   lineTotal: number;
-  queueStatus?: '' | 'pending' | 'done' | 'cancelled';
+  queueStatus?: '' | 'pending' | 'done' | 'cancelled' | 'approval_pending' | 'rejected';
   queuedAt?: string;
   queueCompletedAt?: string;
   queueCancelledAt?: string;
@@ -185,6 +185,8 @@ export interface StaffQueueItem {
   queuedAt: string;
   completedAt: string;
   actorName: string;
+  sourceRole?: 'admin' | 'staff' | 'user';
+  actionLabel?: string;
 }
 
 export interface TableBillSessionItem {
@@ -318,7 +320,9 @@ export interface TableBillingReport {
   to: string;
   summary: { totalRevenue: number; paidBills: number; cashAmount: number; transferAmount: number; walletAmount: number };
   daily: { date: string; paidBills: number; cashAmount: number; transferAmount: number; walletAmount: number; totalRevenue: number }[];
-  payments: { id: string; billId: string; tableName: string; amount: number; paymentMethod: "cash" | "transfer" | "wallet"; paidAt: string; actorName: string }[];
+  tables: { tableName: string; paidBills: number; totalRevenue: number; cashAmount: number; transferAmount: number; walletAmount: number }[];
+  products: { productId: string; name: string; unitLabel: string; quantity: number; revenue: number; billCount: number }[];
+  payments: { id: string; billId: string; tableName: string; amount: number; paymentMethod: "cash" | "transfer" | "wallet"; paidAt: string; actorName: string; items: { productId: string; name: string; unitLabel: string; quantity: number; amount: number }[] }[];
   page: number;
   hasMore: boolean;
 }

@@ -190,6 +190,12 @@ export const tableBillingService = {
   async getQueue(history = false) {
     return pb.send<{ items: StaffQueueItem[] }>('/api/table-billing/action', { method: 'POST', body: { action: 'queue_list', history } });
   },
+  async getOrderRequests(history = false) {
+    return pb.send<{ items: StaffQueueItem[] }>('/api/table-billing/action', { method: 'POST', body: { action: 'request_list', history } });
+  },
+  async updateOrderRequest(billId: string, itemId: string, approve: boolean) {
+    return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: approve ? 'request_approve' : 'request_reject', billId, itemId } });
+  },
   async updateQueue(billId: string, itemId: string, action: 'queue_done' | 'queue_cancel') {
     return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action, billId, itemId } });
   },
@@ -270,12 +276,50 @@ export const tableBillHistoryService = {
     const suffix = query.toString() ? `?${query.toString()}` : '';
     return pb.send<{ items: TableBillHistoryEvent[]; page: number; hasMore: boolean }>(`/api/table-billing/history${suffix}`, { method: 'GET' });
   },
-  async report(input: { from: string; to: string; tableName?: string; paymentMethod?: string; page?: number }) {
+  async report(input: { from: string; to: string; tableName?: string; productName?: string; paymentMethod?: string; page?: number }) {
     const query = new URLSearchParams({ from: input.from, to: input.to });
     if (input.tableName) query.set('tableName', input.tableName);
+    if (input.productName) query.set('productName', input.productName);
     if (input.paymentMethod) query.set('paymentMethod', input.paymentMethod);
     if (input.page) query.set('page', String(input.page));
-    return pb.send<TableBillingReport>(`/api/table-billing/report?${query.toString()}`, { method: 'GET' });
+    const result = await pb.send<TableBillingReport>(`/api/table-billing/report?${query.toString()}`, { method: 'GET' });
+    let payments = (result.payments || []).map((payment) => ({ ...payment, items: payment.items || [] }));
+    let tables = result.tables || [];
+    let products = result.products || [];
+    if (payments.length && (!tables.length || !products.length)) {
+      const details = await Promise.all(payments.map((payment) => tableBillingService.getDetail(payment.billId).catch(() => null)));
+      const tableMap: Record<string, { tableName: string; paidBills: number; totalRevenue: number; cashAmount: number; transferAmount: number; walletAmount: number }> = {};
+      const productMap: Record<string, { productId: string; name: string; unitLabel: string; quantity: number; revenue: number; billCount: number }> = {};
+      const productBills: Record<string, Record<string, boolean>> = {};
+      payments = payments.map((payment, index) => {
+        const items = (details[index]?.items || []).filter((item) => !['cancelled', 'approval_pending', 'rejected'].includes(item.queueStatus || '')).map((item) => ({ productId: item.product, name: item.name, unitLabel: item.unitLabel || 'lần', quantity: item.quantity, amount: item.lineTotal }));
+        const table = tableMap[payment.tableName] || { tableName: payment.tableName, paidBills: 0, totalRevenue: 0, cashAmount: 0, transferAmount: 0, walletAmount: 0 };
+        table.paidBills += 1;
+        table.totalRevenue += payment.amount;
+        if (payment.paymentMethod === 'cash') table.cashAmount += payment.amount;
+        if (payment.paymentMethod === 'transfer') table.transferAmount += payment.amount;
+        if (payment.paymentMethod === 'wallet') table.walletAmount += payment.amount;
+        tableMap[payment.tableName] = table;
+        for (const item of items) {
+          const key = item.productId || item.name;
+          const product = productMap[key] || { productId: item.productId, name: item.name, unitLabel: item.unitLabel, quantity: 0, revenue: 0, billCount: 0 };
+          product.quantity += item.quantity;
+          product.revenue += item.amount;
+          const bills = productBills[key] || {};
+          if (!bills[payment.billId]) { product.billCount += 1; bills[payment.billId] = true; productBills[key] = bills; }
+          productMap[key] = product;
+        }
+        return { ...payment, items };
+      });
+      tables = Object.values(tableMap);
+      products = Object.values(productMap).sort((a, b) => b.revenue - a.revenue);
+    }
+    return {
+      ...result,
+      tables,
+      products,
+      payments,
+    };
   },
 };
 

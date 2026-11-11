@@ -1,5 +1,35 @@
 /// <reference path="../pb_data/types.d.ts" />
 
+const signalStaffQueue = (app, store) => {
+  if (!store) return
+  try {
+    let signal
+    try { signal = app.findFirstRecordByFilter("staff_queue_signals", "store = {:store}", { store }) }
+    catch (e) {
+      signal = new Record(app.findCollectionByNameOrId("staff_queue_signals"))
+      signal.set("store", store)
+      signal.set("revision", 0)
+    }
+    signal.set("revision", (Number(signal.get("revision")) || 0) + 1)
+    app.save(signal)
+  } catch (e) { console.error("Failed to publish staff queue update:", e) }
+}
+
+onRecordAfterCreateSuccess((e) => {
+  signalStaffQueue(e.app, e.record.get("store"))
+  return e.next()
+}, "table_bill_items")
+
+onRecordAfterUpdateSuccess((e) => {
+  signalStaffQueue(e.app, e.record.get("store"))
+  return e.next()
+}, "table_bill_items")
+
+onRecordAfterDeleteSuccess((e) => {
+  signalStaffQueue(e.app, e.record.get("store"))
+  return e.next()
+}, "table_bill_items")
+
 routerAdd("GET", "/api/admin/notifications", (c) => {
   const info = c.requestInfo()
   const auth = info.auth || c.auth
@@ -95,6 +125,7 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
   const from = String(query.from || "")
   const to = String(query.to || "")
   const tableName = String(query.tableName || "").trim().slice(0, 100)
+  const productName = String(query.productName || "").trim().slice(0, 100)
   const paymentMethod = String(query.paymentMethod || "")
   const page = Number(query.page || 1)
   const datePattern = /^\d{4}-\d{2}-\d{2}$/
@@ -115,6 +146,8 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
   const seenBills = {}
   const daily = {}
   const payments = []
+  const tables = {}
+  const products = {}
   let totalRevenue = 0
   let cashAmount = 0
   let transferAmount = 0
@@ -127,6 +160,17 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
     const localDate = new Date(new Date(paidAt).getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
     const amount = Math.max(0, Math.round(Number(event.get("amount")) || 0))
     const method = String(event.get("payment_method") || "")
+    let billItems = []
+    try { billItems = $app.findRecordsByFilter("table_bill_items", "store = {:store} && bill = {:bill}", "created", -1, 0, { store, bill: billId }) } catch (e) {}
+    const paidItems = billItems.filter((item) => !["cancelled", "approval_pending", "rejected"].includes(String(item.get("queue_status") || ""))).map((item) => ({
+      productId: String(item.get("product") || ""),
+      name: String(item.get("product_name") || "Mặt hàng"),
+      unitLabel: String(item.get("unit_label") || "lần"),
+      quantity: Number(item.get("quantity")) || 0,
+      amount: Math.max(0, Math.round(Number(item.get("line_total")) || 0))
+    }))
+    const matchingItems = productName ? paidItems.filter((item) => item.name.toLocaleLowerCase().includes(productName.toLocaleLowerCase())) : paidItems
+    if (productName && matchingItems.length === 0) continue
     const day = daily[localDate] || { date: localDate, paidBills: 0, cashAmount: 0, transferAmount: 0, walletAmount: 0, totalRevenue: 0 }
     day.paidBills += 1
     day.totalRevenue += amount
@@ -136,6 +180,22 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
     daily[localDate] = day
     totalRevenue += amount
     payments.push({ id: event.id, billId, tableName: event.get("table_name") || "Bàn", amount, paymentMethod: method, paidAt, actorName: event.get("actor_name") || "Hệ thống" })
+    payments[payments.length - 1].items = matchingItems
+    const table = tables[payments[payments.length - 1].tableName] || { tableName: payments[payments.length - 1].tableName, paidBills: 0, totalRevenue: 0, cashAmount: 0, transferAmount: 0, walletAmount: 0 }
+    table.paidBills += 1
+    table.totalRevenue += amount
+    if (method === "cash") table.cashAmount += amount
+    if (method === "transfer") table.transferAmount += amount
+    if (method === "wallet") table.walletAmount += amount
+    tables[table.tableName] = table
+    for (const item of matchingItems) {
+      const key = item.productId || item.name
+      const product = products[key] || { productId: item.productId, name: item.name, unitLabel: item.unitLabel, quantity: 0, revenue: 0, billCount: 0, bills: {} }
+      product.quantity += item.quantity
+      product.revenue += item.amount
+      if (!product.bills[billId]) { product.billCount += 1; product.bills[billId] = true }
+      products[key] = product
+    }
   }
   const pageSize = 50
   const start = (page - 1) * pageSize
@@ -143,6 +203,8 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
     from, to,
     summary: { totalRevenue, paidBills: payments.length, cashAmount, transferAmount, walletAmount },
     daily: Object.values(daily).sort((a, b) => a.date.localeCompare(b.date)),
+    tables: Object.values(tables).sort((a, b) => a.tableName.localeCompare(b.tableName, "vi")),
+    products: Object.values(products).map((product) => ({ productId: product.productId, name: product.name, unitLabel: product.unitLabel, quantity: product.quantity, revenue: product.revenue, billCount: product.billCount })).sort((a, b) => b.revenue - a.revenue),
     payments: payments.slice(start, start + pageSize),
     page,
     hasMore: start + pageSize < payments.length
@@ -317,7 +379,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     const active = {}
     bills.forEach((bill) => { active[bill.id] = true })
     const items = app.findRecordsByFilter("table_bill_items", "store = {:store} && product = {:product}", "created", -1, 0, { store, product: productId })
-    return items.reduce((sum, item) => item.id === excludeItemId || item.get("queue_status") === "cancelled" || !active[String(item.get("bill") || "")] || item.get("billing_unit") === "hour" ? sum : sum + Math.max(0, Number(item.get("quantity")) || 0), 0)
+    return items.reduce((sum, item) => item.id === excludeItemId || ["cancelled", "approval_pending", "rejected"].includes(String(item.get("queue_status") || "")) || !active[String(item.get("bill") || "")] || item.get("billing_unit") === "hour" ? sum : sum + Math.max(0, Number(item.get("quantity")) || 0), 0)
   }
   const ensureProductAvailable = (app, productId, quantity, excludeItemId = "") => {
     if (!inventoryRequired(app)) return
@@ -327,7 +389,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     const items = billItems(app, bill.id)
     const grouped = {}
     for (const item of items) {
-      if (item.get("queue_status") === "cancelled") continue
+      if (["cancelled", "approval_pending", "rejected"].includes(String(item.get("queue_status") || ""))) continue
       const productId = String(item.get("product") || "")
       if (!productId || item.get("billing_unit") === "hour") continue
       try { if (app.findRecordById("products", productId).get("kind") === "service") continue } catch (e) {}
@@ -696,6 +758,9 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     return calculateBillItem(item, at, bill)
   }
   const billItems = (app, billId) => app.findRecordsByFilter("table_bill_items", "bill = {:bill}", "created", -1, 0, { bill: billId })
+  const ensureOrderRequestsResolved = (app, bill) => {
+    if (billItems(app, bill.id).some((item) => item.get("queue_status") === "approval_pending")) throw new BadRequestError("Vui lòng chờ nhân viên xử lý yêu cầu món trước khi thanh toán")
+  }
   const moveItems = (app, items, source, target) => {
     const sourcePaused = Number(source.get("paused_seconds")) || 0
     const targetPaused = Number(target.get("paused_seconds")) || 0
@@ -712,16 +777,22 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     }
   }
   const currentTotal = (app, bill) => billItems(app, bill.id).reduce((sum, item) => {
-    if (item.get("queue_status") === "cancelled") return sum
+    if (["cancelled", "approval_pending", "rejected"].includes(String(item.get("queue_status") || ""))) return sum
     const amount = lineAmount(item, Date.now(), bill).amount
     if (!Number.isFinite(amount)) throw new BadRequestError("Không thể tính tổng hóa đơn từ dữ liệu dòng hàng")
     return sum + amount
   }, 0)
   const freezeBill = (app, bill, at) => {
+    const pausedAtText = bill.getString("billing_paused_at")
+    const pausedAt = pausedAtText ? Date.parse(String(pausedAtText).replace(" ", "T")) : NaN
+    if (pausedAtText) {
+      if (Number.isFinite(pausedAt)) bill.set("paused_seconds", (Number(bill.get("paused_seconds")) || 0) + Math.max(0, Math.floor((at - pausedAt) / 1000)))
+      bill.set("billing_paused_at", "")
+    }
     const items = billItems(app, bill.id)
     let total = 0
     for (const item of items) {
-      if (item.get("queue_status") === "cancelled") continue
+      if (["cancelled", "approval_pending", "rejected"].includes(String(item.get("queue_status") || ""))) continue
       if (item.get("billing_unit") === "hour" && !item.get("stopped_at")) item.set("stopped_at", new Date(at).toISOString())
       const calculated = lineAmount(item, at, bill)
       item.set("quantity", calculated.quantity)
@@ -740,7 +811,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       return { gross, result: discountAmount > 0 ? { discountAmount, total: Number(bill.get("total_amount")) || Math.max(0, gross - discountAmount), snapshot } : null }
     }
     const items = billItems(app, bill.id)
-    const lines = items.filter((item) => item.get("queue_status") !== "cancelled").map((item) => {
+    const lines = items.filter((item) => !["cancelled", "approval_pending", "rejected"].includes(String(item.get("queue_status") || ""))).map((item) => {
       const calc = lineAmount(item, at, bill)
       let product = null
       try { product = item.get("product") ? app.findRecordById("products", item.get("product")) : null } catch (e) {}
@@ -759,11 +830,12 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     let total = 0
     const lines = items.map((item) => {
       const calc = lineAmount(item, Date.now(), bill)
-      if (item.get("queue_status") !== "cancelled") total += calc.amount
-      return { id: item.id, product: item.get("product"), name: item.get("product_name"), billingUnit: item.get("billing_unit"), unitLabel: item.get("unit_label") || "", unitPrice: Number(item.get("unit_price")) || 0, quantity: calc.quantity, startedAt: item.get("started_at") || "", stoppedAt: item.get("stopped_at") || "", lineTotal: item.get("queue_status") === "cancelled" ? 0 : calc.amount, queueStatus: item.get("queue_status") || "", queuedAt: item.get("queued_at") || "", queueCompletedAt: item.get("queue_completed_at") || "", queueCancelledAt: item.get("queue_cancelled_at") || "", timePricing: item.get("billing_unit") === "hour" ? item.get("time_pricing") || null : null, timeBreakdown: calc.timeBreakdown }
+      const excluded = ["cancelled", "approval_pending", "rejected"].includes(String(item.get("queue_status") || ""))
+      if (!excluded) total += calc.amount
+      return { id: item.id, product: item.get("product"), name: item.get("product_name"), billingUnit: item.get("billing_unit"), unitLabel: item.get("unit_label") || "", unitPrice: Number(item.get("unit_price")) || 0, quantity: calc.quantity, startedAt: item.get("started_at") || "", stoppedAt: item.get("stopped_at") || "", lineTotal: excluded ? 0 : calc.amount, queueStatus: item.get("queue_status") || "", queuedAt: item.get("queued_at") || "", queueCompletedAt: item.get("queue_completed_at") || "", queueCancelledAt: item.get("queue_cancelled_at") || "", timePricing: item.get("billing_unit") === "hour" ? item.get("time_pricing") || null : null, timeBreakdown: calc.timeBreakdown }
     })
     const promotionLines = items.map((item, index) => {
-      if (item.get("queue_status") === "cancelled") return null
+      if (["cancelled", "approval_pending", "rejected"].includes(String(item.get("queue_status") || ""))) return null
       let product = null
       try { product = item.get("product") ? app.findRecordById("products", item.get("product")) : null } catch (e) {}
       return { ...lines[index], category: product ? product.get("category") || "" : "", categoryId: "" }
@@ -814,28 +886,87 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
 
   if (action === "queue_list") {
     requireBillOperator()
-    const status = input.history === true ? "done" : "pending"
-    const records = $app.findRecordsByFilter("table_bill_items", "store = {:store} && queue_status = {:status}", status === "pending" ? "queued_at,created" : "-queue_completed_at", 500, 0, { store, status })
+    if (input.history === true) {
+      const labels = { queue_completed: "Hoàn thành", queue_cancelled: "Đã hủy", order_approved: "Đã duyệt yêu cầu", order_rejected: "Đã từ chối yêu cầu" }
+      const filter = "store = {:store} && (event_type = 'queue_completed' || event_type = 'queue_cancelled' || event_type = 'order_approved' || event_type = 'order_rejected')"
+      const events = $app.findRecordsByFilter("table_bill_events", filter, "-happened_at", 500, 0, { store })
+      const items = events.flatMap((event) => {
+        let bill
+        try { bill = $app.findRecordById("table_bills", event.get("bill_id")) } catch (e) { return [] }
+        let details = event.get("details") || {}
+        if (typeof details === "string") { try { details = details ? JSON.parse(details) : {} } catch (e) { details = {} } }
+        let item = null
+        try { if (details.itemId) item = $app.findRecordById("table_bill_items", details.itemId) } catch (e) {}
+        return [{
+          id: event.id,
+          billId: bill.id,
+          billStatus: bill.get("status"),
+          tableName: event.get("table_name") || displayTableName($app, bill.get("table")),
+          name: item ? item.get("product_name") : details.productName || event.get("title"),
+          quantity: item ? Number(item.get("quantity")) || 0 : Number(details.quantity) || 0,
+          unitLabel: item ? item.get("unit_label") || "" : "",
+          queuedAt: "",
+          completedAt: event.get("happened_at") || event.get("created"),
+          actorName: event.get("actor_name") || "Hệ thống",
+          actionLabel: labels[event.get("event_type")] || "Đã xử lý"
+        }]
+      })
+      return c.json(200, { items })
+    }
+    const status = "pending"
+    const records = $app.findRecordsByFilter("table_bill_items", "store = {:store} && queue_status = {:status}", "queued_at,created", 500, 0, { store, status })
     const tables = $app.findRecordsByFilter("tables", "store = {:store}", "row_number,position,name", -1, 0, { store })
     const tableNames = {}
     tables.forEach((table, index) => { tableNames[table.id] = String(table.get("name") || "Bàn " + (index + 1)) })
-    const actorByItem = {}
-    if (status === "done") {
-      const events = $app.findRecordsByFilter("table_bill_events", "store = {:store} && event_type = 'queue_completed'", "-happened_at", 5000, 0, { store })
-      for (const event of events) {
-        try {
-          const itemId = JSON.parse(event.getString("details") || "{}").itemId
-          if (itemId && !actorByItem[itemId]) actorByItem[itemId] = event.get("actor_name") || ""
-        } catch (e) {}
-      }
-    }
     const items = records.flatMap((item) => {
       let bill
       try { bill = $app.findRecordById("table_bills", item.get("bill")) } catch (e) { return [] }
-      if (status === "pending" && !["open", "wallet_pending"].includes(String(bill.get("status")))) return []
-      return [{ id: item.id, billId: bill.id, billStatus: bill.get("status"), tableName: tableNames[bill.get("table")] || "Bàn", name: item.get("product_name"), quantity: Number(item.get("quantity")) || 0, unitLabel: item.get("unit_label") || "", queuedAt: item.get("queued_at") || "", completedAt: item.get("queue_completed_at") || "", actorName: actorByItem[item.id] || "" }]
+      if (!["open", "wallet_pending"].includes(String(bill.get("status")))) return []
+      return [{ id: item.id, billId: bill.id, billStatus: bill.get("status"), tableName: tableNames[bill.get("table")] || "Bàn", name: item.get("product_name"), quantity: Number(item.get("quantity")) || 0, unitLabel: item.get("unit_label") || "", queuedAt: item.get("queued_at") || "", completedAt: "", actorName: "" }]
     })
     return c.json(200, { items })
+  }
+
+  if (action === "request_list") {
+    requireBillOperator()
+    const status = input.history === true ? "rejected" : "approval_pending"
+    const records = $app.findRecordsByFilter("table_bill_items", "store = {:store} && queue_status = {:status}", input.history === true ? "-queue_cancelled_at" : "queued_at,created", 500, 0, { store, status })
+    const tables = $app.findRecordsByFilter("tables", "store = {:store}", "row_number,position,name", -1, 0, { store })
+    const tableNames = {}
+    tables.forEach((table, index) => { tableNames[table.id] = String(table.get("name") || "Bàn " + (index + 1)) })
+    const items = records.flatMap((item) => {
+      let bill
+      try { bill = $app.findRecordById("table_bills", item.get("bill")) } catch (e) { return [] }
+      if (status === "approval_pending" && bill.get("status") !== "open") return []
+      let customer = null
+      try { customer = $app.findRecordById("users", item.get("customer")) } catch (e) {}
+      return [{ id: item.id, billId: bill.id, billStatus: bill.get("status"), tableName: tableNames[bill.get("table")] || "Bàn", name: item.get("product_name"), quantity: Number(item.get("quantity")) || 0, unitLabel: item.get("unit_label") || "", queuedAt: item.get("queued_at") || "", completedAt: item.get("queue_cancelled_at") || "", actorName: customer ? customer.get("fullname") || customer.get("username") || "Khách" : "Khách", sourceRole: "user" }]
+    })
+    return c.json(200, { items })
+  }
+
+  if (action === "request_approve" || action === "request_reject") {
+    requireBillOperator()
+    let billId = ""
+    $app.runInTransaction((txApp) => {
+      const bill = findStoreBill(txApp, String(input.billId || ""))
+      if (bill.get("status") !== "open") throw new BadRequestError("Chỉ duyệt món trên hóa đơn đang mở")
+      const item = txApp.findRecordById("table_bill_items", String(input.itemId || ""))
+      if (item.get("bill") !== bill.id || item.get("store") !== store || item.get("queue_status") !== "approval_pending") throw new BadRequestError("Yêu cầu món đã được xử lý hoặc không hợp lệ")
+      const approved = action === "request_approve"
+      const now = new Date().toISOString()
+      if (approved && item.get("billing_unit") !== "hour" && item.get("product")) ensureProductAvailable(txApp, String(item.get("product")), Number(item.get("quantity")) || 0)
+      item.set("queue_status", approved ? "pending" : "rejected")
+      if (approved && item.get("billing_unit") === "hour") item.set("started_at", now)
+      if (approved) item.set("queued_at", now)
+      else item.set("queue_cancelled_at", now)
+      txApp.save(item)
+      bill.set("total_amount", currentTotal(txApp, bill))
+      txApp.save(bill)
+      recordEvent(txApp, { store, billId: bill.id, tableName: displayTableName(txApp, bill.get("table")), category: "action", eventType: approved ? "order_approved" : "order_rejected", title: (approved ? "Duyệt yêu cầu " : "Từ chối yêu cầu ") + item.get("product_name"), actor: auth, details: { itemId: item.id, productName: item.get("product_name"), quantity: Number(item.get("quantity")) || 0 } })
+      billId = bill.id
+    })
+    return c.json(200, { ok: true, bill: detail($app, $app.findRecordById("table_bills", billId)) })
   }
 
   if (action === "apply_promotion") {
@@ -849,7 +980,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       const calc = lineAmount(item, now, bill)
       let product = null
       try { product = item.get("product") ? $app.findRecordById("products", item.get("product")) : null } catch (e) {}
-      return item.get("queue_status") === "cancelled" ? null : { product: item.get("product"), billingUnit: item.get("billing_unit"), unitPrice: Number(item.get("unit_price")) || 0, quantity: calc.quantity, lineTotal: calc.amount, category: product ? product.get("category") || "" : "", categoryId: "" }
+      return ["cancelled", "approval_pending", "rejected"].includes(String(item.get("queue_status") || "")) ? null : { product: item.get("product"), billingUnit: item.get("billing_unit"), unitPrice: Number(item.get("unit_price")) || 0, quantity: calc.quantity, lineTotal: calc.amount, category: product ? product.get("category") || "" : "", categoryId: "" }
     })
     const eligibleLines = lines.filter(Boolean)
     const gross = eligibleLines.reduce((sum, line) => sum + Math.max(0, Number(line.lineTotal) || 0), 0)
@@ -950,9 +1081,9 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   }
 
   if (action === "start") {
-    requireAdmin()
+    if (!canOperateBill && auth.get("role") !== "user") throw new ForbiddenError("Tài khoản không được mở bàn")
     const tableId = String(input.tableId || "")
-    const customerId = String(input.customerId || "")
+    const customerId = auth.get("role") === "user" ? auth.id : String(input.customerId || "")
     let billId = ""
     $app.runInTransaction((txApp) => {
       const table = findStoreTable(txApp, tableId)
@@ -1183,7 +1314,8 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       if (unit === "hour" && billItems(txApp, bill.id).some((item) => item.get("billing_unit") === "hour")) throw new BadRequestError("Mỗi bàn chỉ được có một mặt hàng tính theo thời gian")
       const quantity = unit === "hour" ? 1 : Number(input.quantity)
       if (!Number.isFinite(quantity) || quantity <= 0 || (unit === "quantity" && !Number.isInteger(quantity))) throw new BadRequestError("Số lượng không hợp lệ")
-      if (unit !== "hour" && product.get("kind") !== "service") ensureProductAvailable(txApp, product.id, quantity)
+      const approvalRequired = !canOperateBill
+      if (!approvalRequired && unit !== "hour" && product.get("kind") !== "service") ensureProductAvailable(txApp, product.id, quantity)
       const price = Number(product.get("price"))
       if (!Number.isInteger(price) || price < 0) throw new BadRequestError("Giá mặt hàng phải là số nguyên không âm")
       const timePricing = unit === "hour" ? normalizeTimePricing(product.getString("time_pricing"), true) : null
@@ -1200,16 +1332,16 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       item.set("purchase_price", Math.max(0, Math.round(Number(product.get("purchase_price")) || 0)))
       if (timePricing) item.set("time_pricing", timePricing)
       item.set("quantity", quantity)
-      item.set("started_at", unit === "hour" ? selectedAt : "")
+      item.set("started_at", unit === "hour" && !approvalRequired ? selectedAt : "")
       item.set("paused_seconds_at_start", Number(bill.get("paused_seconds")) || 0)
-      item.set("line_total", unit === "hour" ? 0 : Math.round(price * quantity))
-      item.set("queue_status", "pending")
+      item.set("line_total", unit === "hour" || approvalRequired ? 0 : Math.round(price * quantity))
+      item.set("queue_status", approvalRequired ? "approval_pending" : "pending")
       item.set("queued_at", selectedAt)
       txApp.save(item)
       if (!bill.get("started_at")) bill.set("started_at", selectedAt)
       bill.set("total_amount", currentTotal(txApp, bill))
       txApp.save(bill)
-      recordEvent(txApp, { store, billId: bill.id, tableName: displayTableName(txApp, bill.get("table")), category: "action", eventType: "item_added", title: "Thêm " + product.get("name"), actor: auth, amount: lineAmount(item, Date.now(), bill).amount, details: { itemId: item.id, productId: product.id, productName: product.get("name"), billingUnit: unit, quantity, unitPrice: price } })
+      recordEvent(txApp, { store, billId: bill.id, tableName: displayTableName(txApp, bill.get("table")), category: "action", eventType: approvalRequired ? "order_requested" : "item_added", title: (approvalRequired ? "Yêu cầu " : "Thêm ") + product.get("name"), actor: auth, amount: approvalRequired ? 0 : lineAmount(item, Date.now(), bill).amount, details: { itemId: item.id, productId: product.id, productName: product.get("name"), billingUnit: unit, quantity, unitPrice: price } })
       billId = bill.id
     })
     return c.json(200, { ok: true, bill: detail($app, $app.findRecordById("table_bills", billId)) })
@@ -1324,6 +1456,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     let response
     $app.runInTransaction((txApp) => {
       const txBill = findStoreBill(txApp, bill.id)
+      ensureOrderRequestsResolved(txApp, txBill)
       if (txBill.get("status") === "wallet_pending") {
         if (txBill.get("payment_method") !== "wallet") throw new BadRequestError("Hóa đơn đang chờ xác nhận chuyển khoản")
         response = { ok: true, alreadyRequested: true, bill: detail(txApp, txBill) }; return
@@ -1363,6 +1496,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     let response
     $app.runInTransaction((txApp) => {
       const txBill = findStoreBill(txApp, bill.id)
+      ensureOrderRequestsResolved(txApp, txBill)
       if (txBill.get("status") === "wallet_pending") {
         if (txBill.get("payment_method") !== "transfer") throw new BadRequestError("Hóa đơn đang chờ duyệt thanh toán ví")
         response = { ok: true, alreadyRequested: true, bill: detail(txApp, txBill) }; return
@@ -1413,6 +1547,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     $app.runInTransaction((txApp) => {
       const bill = findStoreBill(txApp, String(input.billId || ""))
       if (!["open", "wallet_pending", "stopped"].includes(String(bill.get("status")))) throw new BadRequestError("Hóa đơn đã được xử lý")
+      ensureOrderRequestsResolved(txApp, bill)
       const table = findStoreTable(txApp, String(bill.get("table") || ""))
       const now = Date.now()
       const status = String(bill.get("status"))

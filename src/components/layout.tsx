@@ -82,6 +82,7 @@ function AppRoutes() {
         <Route path="/admin/products" element={<ProtectedRoute><AdminProductsPage /></ProtectedRoute>} />
         <Route path="/admin/bill-history" element={<ProtectedRoute><AdminBillHistoryPage /></ProtectedRoute>} />
         <Route path="/admin/reports" element={<ProtectedRoute><AdminReportsPage /></ProtectedRoute>} />
+        <Route path="/reports" element={<ProtectedRoute><AdminReportsPage /></ProtectedRoute>} />
         <Route path="/admin/promotions" element={<ProtectedRoute><AdminPromotionsPage /></ProtectedRoute>} />
         <Route path="/admin/customer-segments" element={<ProtectedRoute><AdminCustomerSegmentsPage /></ProtectedRoute>} />
         <Route

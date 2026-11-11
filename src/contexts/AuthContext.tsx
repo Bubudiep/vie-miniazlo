@@ -104,6 +104,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (model && pb.authStore.isValid) {
           setUser(model);
+          void pb.collection('users').authRefresh().catch((err) => {
+            console.warn('Failed to refresh authenticated user:', err);
+          });
         } else {
           pb.authStore.clear();
           setUser(null);
