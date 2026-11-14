@@ -239,8 +239,8 @@ function walletDisabled() {
     const input = body()
     const fromRaw = String(input.fromDate || "")
     const toRaw = String(input.toDate || "")
-    const from = new Date(/^\d{4}-\d{2}-\d{2}$/.test(fromRaw) ? fromRaw + "T00:00:00" : fromRaw).getTime()
-    const to = new Date(/^\d{4}-\d{2}-\d{2}$/.test(toRaw) ? toRaw + "T23:59:59.999" : toRaw).getTime()
+    const from = new Date(/^\d{4}-\d{2}-\d{2}$/.test(fromRaw) ? fromRaw + "T00:00:00+07:00" : fromRaw).getTime()
+    const to = new Date(/^\d{4}-\d{2}-\d{2}$/.test(toRaw) ? toRaw + "T23:59:59.999+07:00" : toRaw).getTime()
     const next = String(input.newExpiresAt || "")
     if (!Number.isFinite(from) || !Number.isFinite(to) || from > to || !next) throw new BadRequestError("Khoảng ngày hết hạn không hợp lệ")
     const userIds = Array.isArray(input.userIds) ? input.userIds : []
@@ -671,8 +671,8 @@ routerAdd("POST", "/api/admin/wallets/promo-expiry-bulk", (c) => {
   const input = info.body || {}
   const fromRaw = String(input.fromDate || "")
   const toRaw = String(input.toDate || "")
-  const from = new Date(/^\d{4}-\d{2}-\d{2}$/.test(fromRaw) ? fromRaw + "T00:00:00" : fromRaw).getTime()
-  const to = new Date(/^\d{4}-\d{2}-\d{2}$/.test(toRaw) ? toRaw + "T23:59:59.999" : toRaw).getTime()
+  const from = new Date(/^\d{4}-\d{2}-\d{2}$/.test(fromRaw) ? fromRaw + "T00:00:00+07:00" : fromRaw).getTime()
+  const to = new Date(/^\d{4}-\d{2}-\d{2}$/.test(toRaw) ? toRaw + "T23:59:59.999+07:00" : toRaw).getTime()
   const next = String(input.newExpiresAt || "")
   if (!Number.isFinite(from) || !Number.isFinite(to) || from > to || !next) throw new BadRequestError("Khoảng ngày hết hạn không hợp lệ")
   const userIds = Array.isArray(input.userIds) ? input.userIds : []

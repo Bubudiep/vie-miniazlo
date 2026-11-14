@@ -1,5 +1,36 @@
 import type { ChangeEvent } from "react";
 
+const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
+
+export function formatVietnamDateTime(value: string | number | Date, options: Intl.DateTimeFormatOptions = { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }): string {
+  return new Date(value).toLocaleString("vi-VN", { ...options, timeZone: VIETNAM_TIME_ZONE });
+}
+
+export function formatVietnamDate(value: string | number | Date, options: Intl.DateTimeFormatOptions = { day: "2-digit", month: "2-digit", year: "numeric" }): string {
+  return new Date(value).toLocaleDateString("vi-VN", { ...options, timeZone: VIETNAM_TIME_ZONE });
+}
+
+export function toVietnamDateTimeInput(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: VIETNAM_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(date).reduce<Record<string, string>>((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+export function fromVietnamDateTimeInput(value: string): string {
+  return value ? new Date(`${value}:00+07:00`).toISOString() : "";
+}
+
+export function vietnamDateBounds(date: string, end = false): number {
+  return Date.parse(`${date}T${end ? "23:59:59.999" : "00:00:00"}+07:00`);
+}
+
 export function normalizeMoneyInput(value: string): string {
   return value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
 }
@@ -47,12 +78,7 @@ export function formatDuration(value: number): string {
 }
 
 export function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatVietnamDateTime(value);
 }
 
 export function formatElapsedSince(value: string): string {

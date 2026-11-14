@@ -4,15 +4,15 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { customerSegmentService, productCategoryService, productService, promotionService } from "@/api/services";
 import type { Product, ProductCategory, Promotion, CustomerSegmentData } from "@/api/pocketbase";
 import { useAuth } from "@/contexts/AuthContext";
-import { formatMoneyInput, handleMoneyInput } from "@/utils/format";
+import { formatMoneyInput, formatVietnamDate, fromVietnamDateTimeInput, handleMoneyInput, toVietnamDateTimeInput } from "@/utils/format";
 
 type Form = {
   name: string; active: boolean; promotionType: Promotion["promotionType"]; value: string; minInvoiceAmount: string; maxDiscount: string; autoApply: boolean;
   startAt: string; endAt: string; weekdays: number[]; timeStart: string; timeEnd: string; scope: Promotion["scope"]; targetCategories: string[]; targetProducts: string[]; audience: Promotion["audience"]; targetGroups: string[]; targetCards: string[];
 };
 const weekdays = [{ value: 1, label: "T2" }, { value: 2, label: "T3" }, { value: 3, label: "T4" }, { value: 4, label: "T5" }, { value: 5, label: "T6" }, { value: 6, label: "T7" }, { value: 0, label: "CN" }];
-const localInput = (value: string) => value ? new Date(value).toISOString().slice(0, 16) : "";
-const nowInput = () => { const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset()); return now.toISOString().slice(0, 16); };
+const localInput = toVietnamDateTimeInput;
+const nowInput = () => toVietnamDateTimeInput(new Date().toISOString());
 const emptyForm = (): Form => ({ name: "", active: true, promotionType: "percent", value: "", minInvoiceAmount: "0", maxDiscount: "0", autoApply: true, startAt: nowInput(), endAt: "", weekdays: [0, 1, 2, 3, 4, 5, 6], timeStart: "", timeEnd: "", scope: "invoice", targetCategories: [], targetProducts: [], audience: "all", targetGroups: [], targetCards: [] });
 const money = (value: number) => `${Number(value || 0).toLocaleString("vi-VN")}đ`;
 const message = (error: any) => error?.response?.message || error?.response?.data?.error || error?.message || "Không thể hoàn tất thao tác";
@@ -45,9 +45,9 @@ export default function AdminPromotionsPage() {
   const openEdit = (item: Promotion) => { setEditing(item); setForm({ name: item.name, active: item.active, promotionType: item.promotionType, value: String(item.value), minInvoiceAmount: String(item.minInvoiceAmount), maxDiscount: String(item.maxDiscount), autoApply: item.autoApply, startAt: localInput(item.startAt), endAt: localInput(item.endAt), weekdays: item.weekdays, timeStart: item.timeStart, timeEnd: item.timeEnd, scope: item.scope, targetCategories: item.targetCategories, targetProducts: item.targetProducts, audience: item.audience, targetGroups: item.targetGroups, targetCards: item.targetCards }); setSheetOpen(true); };
   const save = async () => {
     if (!form.name.trim() || !form.endAt || !form.weekdays.length || !Number.isSafeInteger(Number(form.value)) || Number(form.value) < 0) { openSnackbar({ text: "Vui lòng kiểm tra tên, giá trị, thời gian và ngày áp dụng", type: "warning" }); return; }
-    if (new Date(form.startAt) >= new Date(form.endAt)) { openSnackbar({ text: "Ngày kết thúc phải sau ngày bắt đầu", type: "warning" }); return; }
+    if (Date.parse(fromVietnamDateTimeInput(form.startAt)) >= Date.parse(fromVietnamDateTimeInput(form.endAt))) { openSnackbar({ text: "Ngày kết thúc phải sau ngày bắt đầu", type: "warning" }); return; }
     setSaving(true);
-    const input: Partial<Promotion> = { name: form.name.trim(), active: form.active, promotionType: form.promotionType, value: Number(form.value), minInvoiceAmount: Number(form.minInvoiceAmount) || 0, maxDiscount: Number(form.maxDiscount) || 0, autoApply: form.autoApply, startAt: new Date(form.startAt).toISOString(), endAt: new Date(form.endAt).toISOString(), weekdays: form.weekdays, timeStart: form.timeStart, timeEnd: form.timeEnd, scope: form.scope, targetCategories: form.targetCategories, targetProducts: form.targetProducts, audience: form.audience, targetGroups: form.targetGroups, targetCards: form.targetCards };
+    const input: Partial<Promotion> = { name: form.name.trim(), active: form.active, promotionType: form.promotionType, value: Number(form.value), minInvoiceAmount: Number(form.minInvoiceAmount) || 0, maxDiscount: Number(form.maxDiscount) || 0, autoApply: form.autoApply, startAt: fromVietnamDateTimeInput(form.startAt), endAt: fromVietnamDateTimeInput(form.endAt), weekdays: form.weekdays, timeStart: form.timeStart, timeEnd: form.timeEnd, scope: form.scope, targetCategories: form.targetCategories, targetProducts: form.targetProducts, audience: form.audience, targetGroups: form.targetGroups, targetCards: form.targetCards };
     try { if (editing) await promotionService.update(editing.id, input); else await promotionService.create(input); setSheetOpen(false); await load(); openSnackbar({ text: editing ? "Đã cập nhật khuyến mại" : "Đã tạo khuyến mại", type: "success" }); } catch (error) { openSnackbar({ text: message(error), type: "error" }); } finally { setSaving(false); }
   };
   const remove = async (item: Promotion) => { if (!window.confirm(`Xóa chương trình “${item.name}”?`)) return; try { await promotionService.remove(item.id); await load(); openSnackbar({ text: "Đã xóa khuyến mại", type: "success" }); } catch (error) { openSnackbar({ text: message(error), type: "error" }); } };

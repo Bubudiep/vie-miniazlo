@@ -124,13 +124,14 @@ const TabBar = () => {
           {tabs.map((tab, index) => {
             const active = index === activeIndex;
             return (
-              <div
+              <button
                 key={tab.path}
-                role="button"
+                type="button"
                 aria-label={tab.label}
+                aria-current={active ? "page" : undefined}
                 title={tab.label}
                 onClick={() => handleNavigate(tab.path, index)}
-                className="relative z-10 flex-col flex flex-1 items-center justify-center py-1 h-[60px] "
+                className="relative z-10 flex h-[60px] flex-1 flex-col items-center justify-center border-0 bg-transparent py-1"
               >
                 <div
                   className={`${
@@ -142,7 +143,7 @@ const TabBar = () => {
                   {active && tab.activeIcon ? tab.activeIcon : tab.icon}
                 </div>
                 {tab.path === "/staff/queue" && <span className={`text-[10px] font-semibold leading-none ${active ? "text-white" : "text-slate-500"}`}>Hàng chờ</span>}
-              </div>
+              </button>
             );
           })}
         </div>

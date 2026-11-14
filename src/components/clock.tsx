@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Text } from "zmp-ui";
+import { formatVietnamDateTime } from "@/utils/format";
 
 function Clock() {
   const [time, setTime] = useState("");
@@ -7,7 +8,7 @@ function Clock() {
   useEffect(() => {
     const updateClock = () => {
       const now = new Date();
-      const formattedTime = now.toLocaleString("vi-VN", {
+      const formattedTime = formatVietnamDateTime(now, {
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",

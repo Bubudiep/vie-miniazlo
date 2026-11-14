@@ -4,9 +4,10 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { xuService } from "@/api/services";
 import type { XuRedemption, XuReferralSummary, XuReward, XuSummary, XuTransaction } from "@/api/pocketbase";
+import { formatVietnamDateTime } from "@/utils/format";
 
 const xu = (value: number) => `${value.toLocaleString("vi-VN")} Xu`;
-const dateTime = (value: string) => new Date(value).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
+const dateTime = (value: string) => formatVietnamDateTime(value, { dateStyle: "short", timeStyle: "short" });
 const messageFrom = (error: any) => error?.response?.message || error?.message || "Không thể hoàn tất yêu cầu. Vui lòng thử lại.";
 const makeKey = () => globalThis.crypto?.randomUUID?.() || `xu-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 

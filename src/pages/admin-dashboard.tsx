@@ -8,9 +8,14 @@ import type { AdminDashboardReport } from "@/api/pocketbase";
 import AdminNav from "@/components/admin-nav";
 import StoreHeader from "@/components/store-header";
 import { useAuth } from "@/contexts/AuthContext";
-import { formatMoneyInput, handleMoneyInput } from "@/utils/format";
+import { formatMoneyInput, fromVietnamDateTimeInput, handleMoneyInput, toVietnamDateTimeInput } from "@/utils/format";
 
 const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+const localNow = () => toVietnamDateTimeInput(new Date().toISOString());
+const startOfToday = () => `${today()}T00:00`;
+const updateDateTimePart = (value: string, part: "date" | "time", current: string) => part === "date"
+  ? `${value}T${current.slice(11, 16) || "00:00"}`
+  : `${current.slice(0, 10)}T${value}`;
 const money = (value: number) => `${Math.round(Number(value || 0)).toLocaleString("vi-VN")}đ`;
 const messageOf = (error: any) => error?.response?.message || error?.response?.data?.error || error?.message || "Không thể tải Dashboard";
 
@@ -20,8 +25,8 @@ export default function AdminDashboardPage() {
   const { openSnackbar } = useSnackbar();
   const openSnackbarRef = useRef(openSnackbar);
   openSnackbarRef.current = openSnackbar;
-  const [from, setFrom] = useState(today());
-  const [to, setTo] = useState(today());
+  const [from, setFrom] = useState(startOfToday());
+  const [to, setTo] = useState(localNow());
   const [report, setReport] = useState<AdminDashboardReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [expenseOpen, setExpenseOpen] = useState(false);
@@ -29,11 +34,12 @@ export default function AdminDashboardPage() {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("");
   const [note, setNote] = useState("");
-  const [spentAt, setSpentAt] = useState(today());
+  const [spentAt, setSpentAt] = useState(localNow());
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setReport(await adminDashboardService.get(from, to)); }
+    if (from > to) { openSnackbarRef.current({ text: "Thời điểm bắt đầu không được sau thời điểm kết thúc", type: "warning", position: "top" }); setLoading(false); return; }
+    try { setReport(await adminDashboardService.get(fromVietnamDateTimeInput(from), fromVietnamDateTimeInput(to))); }
     catch (error) { openSnackbarRef.current({ text: messageOf(error), type: "error", position: "top" }); }
     finally { setLoading(false); }
   }, [from, to]);
@@ -52,7 +58,7 @@ export default function AdminDashboardPage() {
     }
     setSaving(true);
     try {
-      await adminDashboardService.addExpense({ amount: value, category: category.trim(), note: note.trim(), spentAt });
+      await adminDashboardService.addExpense({ amount: value, category: category.trim(), note: note.trim(), spentAt: fromVietnamDateTimeInput(spentAt) });
       setExpenseOpen(false);
       setAmount(""); setCategory(""); setNote("");
       await load();
@@ -73,10 +79,10 @@ export default function AdminDashboardPage() {
         <button type="button" onClick={() => setExpenseOpen(true)} className="flex min-h-10 items-center gap-2 rounded-lg bg-rose-700 px-3 text-sm font-semibold text-white"><Icon icon="zi-plus" />Nhập chi phí</button>
       </header>
 
-      <form onSubmit={(event) => { event.preventDefault(); void load(); }} className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-        <label className="text-sm font-medium text-slate-700">Từ ngày<input required type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label>
-        <label className="text-sm font-medium text-slate-700">Đến ngày<input required type="date" value={to} onChange={(event) => setTo(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label>
-        <button type="submit" disabled={loading} className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-60 sm:col-span-1">{loading && <Spinner />}Xem thống kê</button>
+      <form onSubmit={(event) => { event.preventDefault(); void load(); }} className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+        <fieldset className="min-w-0"><legend className="text-sm font-medium text-slate-700">Từ thời điểm</legend><div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_7rem] gap-2"><input required aria-label="Ngày bắt đầu" type="date" value={from.slice(0, 10)} onChange={(event) => setFrom(updateDateTimePart(event.target.value, "date", from))} className="min-h-11 min-w-0 w-full rounded-lg border border-slate-300 px-2 text-base" /><input required aria-label="Giờ bắt đầu" type="time" value={from.slice(11, 16)} onChange={(event) => setFrom(updateDateTimePart(event.target.value, "time", from))} className="min-h-11 min-w-0 w-full rounded-lg border border-slate-300 px-2 text-base" /></div></fieldset>
+        <fieldset className="min-w-0"><legend className="text-sm font-medium text-slate-700">Đến thời điểm</legend><div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_7rem] gap-2"><input required aria-label="Ngày kết thúc" type="date" value={to.slice(0, 10)} onChange={(event) => setTo(updateDateTimePart(event.target.value, "date", to))} className="min-h-11 min-w-0 w-full rounded-lg border border-slate-300 px-2 text-base" /><input required aria-label="Giờ kết thúc" type="time" value={to.slice(11, 16)} onChange={(event) => setTo(updateDateTimePart(event.target.value, "time", to))} className="min-h-11 min-w-0 w-full rounded-lg border border-slate-300 px-2 text-base" /></div></fieldset>
+        <button type="submit" disabled={loading} className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-60">{loading && <Spinner />}Xem thống kê</button>
       </form>
 
       {loading ? <div className="flex justify-center py-12"><Spinner /></div> : report && <>
@@ -107,6 +113,7 @@ export default function AdminDashboardPage() {
 
         <section className="grid gap-5 lg:grid-cols-2">
           <div className="space-y-2"><Text.Title size="small" className="text-slate-900">Kết quả theo ngày</Text.Title>{report.daily.length ? <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">{report.daily.map((day) => <article key={day.date} className="grid grid-cols-2 gap-2 p-3"><Text size="small" className="font-semibold">{new Date(`${day.date}T12:00:00+07:00`).toLocaleDateString("vi-VN")}</Text><Text size="small" className={`text-right font-bold ${day.profit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{money(day.profit)}</Text><Text size="xSmall" className="text-slate-500">Thu {money(day.revenue)} · Chi {money(day.productCost + day.expenses)}</Text><Text size="xSmall" className="text-right text-slate-500">Lợi nhuận</Text></article>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Chưa có dữ liệu trong kỳ.</div>}</div>
+          <div className="space-y-2"><Text.Title size="small" className="text-slate-900">Kết quả theo giờ</Text.Title>{report.hourly.length ? <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">{report.hourly.map((hour) => <article key={hour.hour} className="grid grid-cols-2 gap-2 p-3"><Text size="small" className="font-semibold">{new Date(hour.hour).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</Text><Text size="small" className={`text-right font-bold ${hour.profit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{money(hour.profit)}</Text><Text size="xSmall" className="text-slate-500">Thu {money(hour.revenue)} · Chi {money(hour.productCost + hour.expenses)}</Text><Text size="xSmall" className="text-right text-slate-500">Lợi nhuận</Text></article>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Chưa có dữ liệu trong kỳ.</div>}</div>
           <div className="space-y-2"><div className="flex items-center justify-between gap-2"><Text.Title size="small" className="text-slate-900">Chi phí khác</Text.Title><Text size="xSmall" className="font-semibold text-rose-700">{money(summary?.otherExpenses || 0)}</Text></div>{report.expenses.length ? <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">{report.expenses.map((expense) => <article key={expense.id} className="flex items-start justify-between gap-3 p-3"><div className="min-w-0"><Text size="small" className="font-semibold text-slate-900">{expense.category}</Text><Text size="xSmall" className="mt-1 block break-words text-slate-500">{expense.note || new Date(expense.spentAt).toLocaleDateString("vi-VN")}</Text></div><Text size="small" className="shrink-0 font-semibold text-rose-700">{money(expense.amount)}</Text></article>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Chưa có khoản chi khác.</div>}</div>
         </section>
       </>}
@@ -118,9 +125,9 @@ export default function AdminDashboardPage() {
         <form onSubmit={(event) => void saveExpense(event)} className="space-y-3">
           <label className="block text-sm font-medium text-slate-700">Số tiền (VNĐ)<input required type="text" inputMode="numeric" value={formatMoneyInput(amount)} onChange={(event) => handleMoneyInput(event, setAmount)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label>
           <label className="block text-sm font-medium text-slate-700">Nhóm chi phí<input required maxLength={80} value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Điện nước, nhân sự..." className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label>
-          <label className="block text-sm font-medium text-slate-700">Ngày chi<input required type="date" value={spentAt} onChange={(event) => setSpentAt(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label>
+          <label className="block text-sm font-medium text-slate-700">Thời điểm chi<input required type="datetime-local" value={spentAt} onChange={(event) => setSpentAt(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label>
           <label className="block text-sm font-medium text-slate-700">Ghi chú<textarea maxLength={500} rows={2} value={note} onChange={(event) => setNote(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base" /></label>
-          <button disabled={saving} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-rose-700 text-sm font-semibold text-white disabled:opacity-60">{saving && <Spinner />}Lưu khoản chi</button>
+          <button type="submit" disabled={saving} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-rose-700 text-sm font-semibold text-white disabled:opacity-60">{saving && <Spinner />}Lưu khoản chi</button>
         </form>
       </Box>
     </Sheet>

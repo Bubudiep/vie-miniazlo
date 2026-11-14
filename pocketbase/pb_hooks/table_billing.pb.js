@@ -128,14 +128,20 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
   const productName = String(query.productName || "").trim().slice(0, 100)
   const paymentMethod = String(query.paymentMethod || "")
   const page = Number(query.page || 1)
-  const datePattern = /^\d{4}-\d{2}-\d{2}$/
-  if (!datePattern.test(from) || !datePattern.test(to)) throw new BadRequestError("Khoảng ngày không hợp lệ")
-  if (from > to) throw new BadRequestError("Ngày bắt đầu không được sau ngày kết thúc")
+  const parseRange = (value, end) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const parsed = new Date(`${value}T00:00:00+07:00`)
+      return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value ? new Date(parsed.getTime() + (end ? 86400000 : 0)) : null
+    }
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return null
+    const parsed = new Date(value)
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value ? new Date(parsed.getTime() + (end ? 60000 : 0)) : null
+  }
+  const fromDate = parseRange(from, false)
+  const toDate = parseRange(to, true)
+  if (!fromDate || !toDate || fromDate >= toDate) throw new BadRequestError("Khoảng thời gian không hợp lệ")
   if (!Number.isSafeInteger(page) || page < 1) throw new BadRequestError("Trang báo cáo không hợp lệ")
   if (paymentMethod && !["cash", "transfer", "wallet"].includes(paymentMethod)) throw new BadRequestError("Phương thức thanh toán không hợp lệ")
-  const fromDate = new Date(`${from}T00:00:00+07:00`)
-  const toDate = new Date(`${to}T00:00:00+07:00`)
-  toDate.setDate(toDate.getDate() + 1)
   const fromIso = fromDate.toISOString()
   const toIso = toDate.toISOString()
   let filter = "store = {:store} && category = 'payment' && event_type = 'payment_completed' && happened_at >= {:from} && happened_at < {:to}"
@@ -145,6 +151,7 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
   const events = $app.findRecordsByFilter("table_bill_events", filter, "-happened_at", -1, 0, params)
   const seenBills = {}
   const daily = {}
+  const hourly = {}
   const payments = []
   const tables = {}
   const products = {}
@@ -158,6 +165,7 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
     seenBills[billId] = true
     const paidAt = String(event.get("happened_at") || event.get("created") || "")
     const localDate = new Date(new Date(paidAt).getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const hour = new Date(Math.floor((new Date(paidAt).getTime() + 7 * 60 * 60 * 1000) / 3600000) * 3600000 - 7 * 60 * 60 * 1000).toISOString()
     const amount = Math.max(0, Math.round(Number(event.get("amount")) || 0))
     const method = String(event.get("payment_method") || "")
     let billItems = []
@@ -178,6 +186,13 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
     if (method === "transfer") { day.transferAmount += amount; transferAmount += amount }
     if (method === "wallet") { day.walletAmount += amount; walletAmount += amount }
     daily[localDate] = day
+    const hourRow = hourly[hour] || { hour, paidBills: 0, cashAmount: 0, transferAmount: 0, walletAmount: 0, totalRevenue: 0 }
+    hourRow.paidBills += 1
+    hourRow.totalRevenue += amount
+    if (method === "cash") hourRow.cashAmount += amount
+    if (method === "transfer") hourRow.transferAmount += amount
+    if (method === "wallet") hourRow.walletAmount += amount
+    hourly[hour] = hourRow
     totalRevenue += amount
     payments.push({ id: event.id, billId, tableName: event.get("table_name") || "Bàn", amount, paymentMethod: method, paidAt, actorName: event.get("actor_name") || "Hệ thống" })
     payments[payments.length - 1].items = matchingItems
@@ -203,6 +218,7 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
     from, to,
     summary: { totalRevenue, paidBills: payments.length, cashAmount, transferAmount, walletAmount },
     daily: Object.values(daily).sort((a, b) => a.date.localeCompare(b.date)),
+    hourly: Object.values(hourly).sort((a, b) => a.hour.localeCompare(b.hour)),
     tables: Object.values(tables).sort((a, b) => a.tableName.localeCompare(b.tableName, "vi")),
     products: Object.values(products).map((product) => ({ productId: product.productId, name: product.name, unitLabel: product.unitLabel, quantity: product.quantity, revenue: product.revenue, billCount: product.billCount })).sort((a, b) => b.revenue - a.revenue),
     payments: payments.slice(start, start + pageSize),
@@ -1205,6 +1221,16 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       const sourceItems = billItems(txApp, source.id)
       const targetItems = billItems(txApp, target.id)
       if (sourceItems.filter((item) => item.get("billing_unit") === "hour").length + targetItems.filter((item) => item.get("billing_unit") === "hour").length > 1) throw new BadRequestError("Mỗi bàn chỉ được có một mặt hàng tính theo thời gian")
+      const mergedAt = Date.now()
+      const mergedAtText = new Date(mergedAt).toISOString()
+      for (const item of sourceItems) {
+        if (item.get("billing_unit") !== "hour" || ["cancelled", "approval_pending", "rejected"].includes(String(item.get("queue_status") || ""))) continue
+        item.set("stopped_at", mergedAtText)
+        const calculated = lineAmount(item, mergedAt, source)
+        item.set("quantity", calculated.quantity)
+        item.set("line_total", calculated.amount)
+        txApp.save(item)
+      }
       if (!targetCustomer && targetCustomerId) target.set("customer", targetCustomerId)
       moveItems(txApp, sourceItems, source, target)
       target.set("total_amount", currentTotal(txApp, target))

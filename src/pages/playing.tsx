@@ -8,17 +8,14 @@ import { billPaymentService, promotionService, tableBillingService, tableService
 import pb, { type BillPaymentSettings, type Promotion, type PromotionSnapshot, type TableBill, type TableBillProduct, type TableMap, type WalletOrder } from "@/api/pocketbase";
 import { useAuth } from "@/contexts/AuthContext";
 import { openBillPrint } from "@/components/bill-print";
-import { formatDuration, formatMoneyInput, handleMoneyInput } from "@/utils/format";
+import { formatDuration, formatMoneyInput, formatVietnamDateTime, fromVietnamDateTimeInput, handleMoneyInput, toVietnamDateTimeInput } from "@/utils/format";
 
 const money = (value: number) => `${Math.round(Number(value || 0)).toLocaleString("vi-VN")}đ`;
 const quantityText = (value: number, unit: TableBill["items"][number]["billingUnit"]) => unit === "quantity" ? String(Math.round(value)) : Number(value).toLocaleString("vi-VN", { maximumFractionDigits: 2 });
-const dateTime = (value: string) => new Date(value).toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+const dateTime = (value: string) => formatVietnamDateTime(value);
 const errorMessage = (error: any) => error?.response?.data?.error || error?.response?.message || error?.message || "Không thể thực hiện thao tác";
 const draftsFor = (items: TableBill["items"]) => items.reduce<Record<string, string>>((drafts, item) => { drafts[item.id] = String(item.quantity); return drafts; }, {});
-const localDateTimeInput = (value: string) => {
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "";
-};
+const localDateTimeInput = toVietnamDateTimeInput;
 const cashDenominations = [1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000];
 const promotionConditions = (promotion: PromotionSnapshot) => {
   const conditions = [`Phạm vi: ${promotion.scope === "invoice" ? "toàn hóa đơn" : promotion.scope === "category" ? `danh mục ${promotion.targetCategories.join(", ")}` : `mặt hàng ${(promotion.targetProducts || []).map((item) => item.name).join(", ")}`}`];
@@ -261,9 +258,13 @@ export default function PlayingPage() {
 
   const refresh = async () => {
     if (!bill) return;
-    const result = await sequentialTableName(await tableBillingService.getDetail(bill.id));
-    setBill(result);
-    setQuantityDraft(draftsFor(result.items));
+    try {
+      const result = await sequentialTableName(await tableBillingService.getDetail(bill.id));
+      setBill(result);
+      setQuantityDraft(draftsFor(result.items));
+    } catch {
+      // Keep the original action error visible when a follow-up refresh also fails.
+    }
   };
 
   const addProduct = (product: TableBillProduct) => {
@@ -335,8 +336,8 @@ export default function PlayingPage() {
 
   const updateItemTime = async () => {
     if (!bill || !timeEditItemId) return;
-    const startedAt = new Date(timeStartedInput).getTime();
-    const stoppedAt = timeStoppedInput ? new Date(timeStoppedInput).getTime() : NaN;
+    const startedAt = Date.parse(fromVietnamDateTimeInput(timeStartedInput));
+    const stoppedAt = timeStoppedInput ? Date.parse(fromVietnamDateTimeInput(timeStoppedInput)) : NaN;
     if (!Number.isFinite(startedAt) || startedAt > Date.now() || (timeStoppedInput && (!Number.isFinite(stoppedAt) || stoppedAt <= startedAt || stoppedAt > Date.now()))) {
       openSnackbar({ text: "Thời gian không hợp lệ; giờ kết thúc phải sau giờ bắt đầu và không ở tương lai", type: "warning" });
       return;

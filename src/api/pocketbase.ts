@@ -320,6 +320,7 @@ export interface TableBillingReport {
   to: string;
   summary: { totalRevenue: number; paidBills: number; cashAmount: number; transferAmount: number; walletAmount: number };
   daily: { date: string; paidBills: number; cashAmount: number; transferAmount: number; walletAmount: number; totalRevenue: number }[];
+  hourly: { hour: string; paidBills: number; cashAmount: number; transferAmount: number; walletAmount: number; totalRevenue: number }[];
   tables: { tableName: string; paidBills: number; totalRevenue: number; cashAmount: number; transferAmount: number; walletAmount: number }[];
   products: { productId: string; name: string; unitLabel: string; quantity: number; revenue: number; billCount: number }[];
   payments: { id: string; billId: string; tableName: string; amount: number; paymentMethod: "cash" | "transfer" | "wallet"; paidAt: string; actorName: string; items: { productId: string; name: string; unitLabel: string; quantity: number; amount: number }[] }[];
@@ -360,6 +361,7 @@ export interface AdminDashboardReport {
   summary: { totalRevenue: number; goodsCost: number; otherExpenses: number; totalExpenses: number; profit: number; paidBills: number };
   products: { productId: string; name: string; unitLabel: string; outputQuantity: number; revenue: number; cost: number; profit: number }[];
   daily: { date: string; revenue: number; productCost: number; expenses: number; profit: number }[];
+  hourly: { hour: string; revenue: number; productCost: number; expenses: number; profit: number }[];
   expenses: { id: string; amount: number; category: string; note: string; spentAt: string }[];
 }
 

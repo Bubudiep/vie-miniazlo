@@ -1,9 +1,11 @@
-import { Box, Icon, Page, Text } from "zmp-ui";
+import { Box, Icon, Page, Sheet, Text } from "zmp-ui";
 import logo from "@/images/logo.jpg";
 import StoreHeader from "@/components/store-header";
 import { formatDateTime } from "@/utils/format";
 import { IoMdHeart, IoMdChatbubbles } from "react-icons/io";
 import { FaFire } from "react-icons/fa";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const NEWS_POSTS = [
   {
@@ -49,6 +51,10 @@ const NEWS_POSTS = [
 ];
 
 function HomePage() {
+  const navigate = useNavigate();
+  const [likedPosts, setLikedPosts] = useState<Record<number, boolean>>({});
+  const [commentPostId, setCommentPostId] = useState<number | null>(null);
+
   return (
     <Page className="flex flex-col gap-4 bg-slate-50 pb-[calc(env(safe-area-inset-bottom,0px)+96px)] dark:bg-black">
       <StoreHeader />
@@ -88,13 +94,23 @@ function HomePage() {
             )}
             {/* Post Actions */}
             <div className="flex items-center justify-around border-t border-slate-100 p-3">
-              <button className="flex items-center gap-2 text-slate-600 hover:text-coral-500 transition-colors">
+              <button
+                type="button"
+                aria-pressed={Boolean(likedPosts[post.id])}
+                onClick={() => setLikedPosts((current) => ({ ...current, [post.id]: !current[post.id] }))}
+                className={`flex items-center gap-2 transition-colors ${likedPosts[post.id] ? "text-rose-600" : "text-slate-600 hover:text-rose-500"}`}
+              >
                 <IoMdHeart size={20} />
                 <Text size="small" className="font-medium">
-                  {post.likes}
+                  {post.likes + (likedPosts[post.id] ? 1 : 0)}
                 </Text>
               </button>
-              <button className="flex items-center gap-2 text-slate-600 hover:text-green-500 transition-colors">
+              <button
+                type="button"
+                aria-label={`Mở bình luận cho bài viết của ${post.author}`}
+                onClick={() => setCommentPostId(post.id)}
+                className="flex items-center gap-2 text-slate-600 transition-colors hover:text-green-500"
+              >
                 <IoMdChatbubbles size={20} />
                 <Text size="small" className="font-medium">
                   {post.comments}
@@ -115,11 +131,27 @@ function HomePage() {
           <Text size="small" className="text-slate-700 mb-3">
             Tham gia ngay để không bỏ lỡ các chương trình khuyến mãi hấp dẫn!
           </Text>
-          <button className="w-full bg-coral-500 hover:bg-coral-600 text-white font-semibold py-3 rounded-xl transition-colors">
+          <button
+            type="button"
+            onClick={() => navigate("/home")}
+            className="w-full rounded-xl bg-coral-500 py-3 font-semibold text-white transition-colors hover:bg-coral-600"
+          >
             Xem chi tiết
           </button>
         </div>
       </div>
+      <Sheet visible={commentPostId !== null} onClose={() => setCommentPostId(null)} autoHeight swipeToClose unmountOnClose>
+        <Box className="space-y-4 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4">
+          <div className="flex items-center justify-between">
+            <Text.Title size="small">Bình luận bài viết</Text.Title>
+            <button type="button" aria-label="Đóng bình luận" onClick={() => setCommentPostId(null)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100">
+              <Icon icon="zi-close" />
+            </button>
+          </div>
+          <Text size="small" className="text-slate-600">Bài viết hiện chưa có bình luận mới.</Text>
+          <button type="button" onClick={() => setCommentPostId(null)} className="min-h-11 w-full rounded-lg bg-emerald-700 text-sm font-semibold text-white">Đóng</button>
+        </Box>
+      </Sheet>
     </Page>
   );
 }

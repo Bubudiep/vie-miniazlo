@@ -7,9 +7,10 @@ import pb from "@/api/pocketbase";
 import type { StaffQueueItem } from "@/api/pocketbase";
 import StoreHeader from "@/components/store-header";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatVietnamDateTime } from "@/utils/format";
 
 const messageOf = (error: any) => error?.response?.data?.error || error?.response?.message || error?.message || "Không thể cập nhật hàng chờ";
-const dateTime = (value: string) => value ? new Date(value).toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+const dateTime = (value: string) => value ? formatVietnamDateTime(value) : "";
 
 export default function StaffQueuePage() {
   const { user } = useAuth();

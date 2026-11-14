@@ -316,6 +316,7 @@ export const tableBillHistoryService = {
     }
     return {
       ...result,
+      daily: result.daily || [],
       tables,
       products,
       payments,
