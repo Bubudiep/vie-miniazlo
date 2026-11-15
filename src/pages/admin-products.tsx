@@ -33,6 +33,43 @@ type ProductForm = {
   specialWeekdays: number[];
 };
 
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+
+async function compressImage(file: File): Promise<File> {
+  if (file.size <= MAX_IMAGE_SIZE) return file;
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Không thể đọc ảnh này"));
+      image.src = url;
+    });
+    const canvas = document.createElement("canvas");
+    const scale = Math.min(1, 1920 / Math.max(image.width, image.height));
+    canvas.width = Math.round(image.width * scale);
+    canvas.height = Math.round(image.height * scale);
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Không thể xử lý ảnh");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const type = file.type === "image/png" ? "image/png" : "image/jpeg";
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.82));
+      if (blob && blob.size <= MAX_IMAGE_SIZE) {
+        const extension = type === "image/png" ? ".png" : ".jpg";
+        return new File([blob], `${file.name.replace(/\.[^.]+$/, "")}${extension}`, { type });
+      }
+      const nextScale = Math.max(320 / Math.max(image.width, image.height), 0.8 ** (attempt + 1));
+      canvas.width = Math.round(image.width * nextScale);
+      canvas.height = Math.round(image.height * nextScale);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    }
+    throw new Error("Ảnh vẫn vượt quá 5 MB sau khi nén");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 const WEEKDAYS = [
   { value: 1, label: "Thứ 2" },
   { value: 2, label: "Thứ 3" },
@@ -451,16 +488,24 @@ export default function AdminProductsPage() {
         <div className="flex items-center justify-between"><Text.Title size="small">{editing ? "Sửa mặt hàng" : "Thêm mặt hàng"}</Text.Title><button aria-label="Đóng" onClick={() => setSheetOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100"><Icon icon="zi-close" /></button></div>
         <label className="block text-sm font-medium text-slate-700">Tên mặt hàng<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} maxLength={255} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-base" /></label>
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-700">Ảnh mặt hàng<input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
+          <label className="block text-sm font-medium text-slate-700">Ảnh mặt hàng<input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={async (event) => {
+            const input = event.currentTarget;
+            const file = input.files?.[0];
             if (!file) return;
-            if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) {
-              event.currentTarget.value = "";
-              openSnackbar({ text: "Ảnh phải là JPG, PNG hoặc WebP và không quá 5 MB", type: "warning" });
+            if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+              input.value = "";
+              openSnackbar({ text: "Ảnh phải có định dạng JPG, PNG hoặc WebP", type: "warning" });
               return;
             }
-            setSavedImageUrl("");
-            setImageFile(file);
+            try {
+              const compressed = await compressImage(file);
+              setSavedImageUrl("");
+              setImageFile(compressed);
+              if (compressed !== file) openSnackbar({ text: `Ảnh đã được nén còn ${(compressed.size / 1024 / 1024).toFixed(1)} MB`, type: "success" });
+            } catch (error) {
+              input.value = "";
+              openSnackbar({ text: error instanceof Error ? error.message : "Không thể nén ảnh", type: "error" });
+            }
           }} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700" /></label>
           <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
             <div className="flex aspect-square w-20 shrink-0 items-center justify-center overflow-hidden rounded-md bg-slate-200 text-slate-400">
