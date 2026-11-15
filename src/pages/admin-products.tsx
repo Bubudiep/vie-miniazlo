@@ -133,6 +133,7 @@ export default function AdminProductsPage() {
   const [filePreview, setFilePreview] = useState("");
   const [savedImageUrl, setSavedImageUrl] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [editingCategory, setEditingCategory] = useState<ProductCategory | null>(null);
   const [savingCategory, setSavingCategory] = useState(false);
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -364,6 +365,36 @@ export default function AdminProductsPage() {
     }
   };
 
+  const renameCategory = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingCategory) return;
+    const name = newCategoryName.trim();
+    if (!name || name.length > 80) {
+      openSnackbar({ text: "Tên danh mục phải từ 1 đến 80 ký tự", type: "warning" });
+      return;
+    }
+    if (categories.some((item) => item.id !== editingCategory.id && item.name.toLocaleLowerCase("vi") === name.toLocaleLowerCase("vi"))) {
+      openSnackbar({ text: "Danh mục này đã tồn tại", type: "warning" });
+      return;
+    }
+    setSavingCategory(true);
+    try {
+      const affected = items.filter((product) => categoryLabel(product) === editingCategory.name);
+      await productCategoryService.update(editingCategory.id, name);
+      await Promise.all(affected.map((product) => productService.update(product.id, { category: name })));
+      setCategories((current) => categorySort(current.map((item) => item.id === editingCategory.id ? { ...item, name } : item)));
+      setItems((current) => current.map((product) => categoryLabel(product) === editingCategory.name ? { ...product, category: name } : product));
+      setEditingCategory(null);
+      setNewCategoryName("");
+      openSnackbar({ text: "Đã đổi tên danh mục", type: "success" });
+    } catch (error) {
+      openSnackbar({ text: errorMessage(error), type: "error" });
+      await load();
+    } finally {
+      setSavingCategory(false);
+    }
+  };
+
   const updateDuration = (field: "interval" | "firstDuration" | "specialDuration", key: keyof DurationForm, value: string) => {
     setForm((current) => ({ ...current, [field]: { ...current[field], [key]: value } }));
   };
@@ -473,10 +504,10 @@ export default function AdminProductsPage() {
     <Sheet visible={categorySheetOpen} onClose={() => setCategorySheetOpen(false)} autoHeight swipeToClose>
       <Box className="max-h-[85vh] space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4">
         <div className="flex items-center justify-between"><Text.Title size="small">Danh mục mặt hàng</Text.Title><button aria-label="Đóng" onClick={() => setCategorySheetOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100"><Icon icon="zi-close" /></button></div>
-        <form onSubmit={addCategory} className="flex items-end gap-2"><label className="min-w-0 flex-1 text-sm font-medium text-slate-700">Tên danh mục<input value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} maxLength={80} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-base" /></label><button type="submit" disabled={savingCategory || !newCategoryName.trim()} aria-label="Thêm danh mục" title="Thêm danh mục" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-emerald-700 text-white disabled:opacity-50"><Icon icon="zi-plus" /></button></form>
+        <form onSubmit={editingCategory ? renameCategory : addCategory} className="flex items-end gap-2"><label className="min-w-0 flex-1 text-sm font-medium text-slate-700">{editingCategory ? "Tên danh mục mới" : "Tên danh mục"}<input value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} maxLength={80} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-base" /></label><button type="submit" disabled={savingCategory || !newCategoryName.trim()} aria-label={editingCategory ? "Lưu tên danh mục" : "Thêm danh mục"} title={editingCategory ? "Lưu tên danh mục" : "Thêm danh mục"} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-emerald-700 text-white disabled:opacity-50">{savingCategory ? <Spinner /> : <Icon icon={editingCategory ? "zi-check" : "zi-plus"} />}</button>{editingCategory && <button type="button" onClick={() => { setEditingCategory(null); setNewCategoryName(""); }} className="h-12 shrink-0 rounded-lg border border-slate-300 px-3 text-sm">Hủy</button>}</form>
         {categories.length === 0 ? <div className="rounded-lg border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">Chưa có danh mục</div> : <div className="divide-y divide-slate-200">{categories.map((category) => {
           const itemCount = items.filter((product) => categoryLabel(product) === category.name).length;
-          return <div key={category.id} className="flex items-center justify-between gap-3 py-3"><div className="min-w-0"><Text size="small" className="font-medium text-slate-900">{category.name}</Text><Text size="xSmall" className="text-slate-500">{itemCount} mặt hàng</Text></div><button disabled={itemCount > 0} onClick={() => void deleteCategory(category)} aria-label={`Xóa danh mục ${category.name}`} title={itemCount ? "Danh mục đang được sử dụng" : "Xóa danh mục"} className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-rose-200 px-2.5 text-xs font-semibold text-rose-700 disabled:border-slate-200 disabled:text-slate-400"><Icon icon="zi-delete" />Xóa</button></div>;
+          return <div key={category.id} className="flex items-center justify-between gap-3 py-3"><div className="min-w-0"><Text size="small" className="font-medium text-slate-900">{category.name}</Text><Text size="xSmall" className="text-slate-500">{itemCount} mặt hàng</Text></div><div className="flex shrink-0 gap-2"><button onClick={() => { setEditingCategory(category); setNewCategoryName(category.name); }} aria-label={`Sửa tên danh mục ${category.name}`} title="Sửa tên danh mục" className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700"><Icon icon="zi-edit" /></button><button disabled={itemCount > 0} onClick={() => void deleteCategory(category)} aria-label={`Xóa danh mục ${category.name}`} title={itemCount ? "Danh mục đang được sử dụng" : "Xóa danh mục"} className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-rose-200 px-2.5 text-xs font-semibold text-rose-700 disabled:border-slate-200 disabled:text-slate-400"><Icon icon="zi-delete" />Xóa</button></div></div>;
         })}</div>}
       </Box>
     </Sheet>

@@ -6,6 +6,7 @@ const links = [
   { path: "/admin/inventory", label: "Kho" },
   { path: "/admin/reports", label: "Báo cáo" },
   { path: "/admin/staff", label: "Nhân viên" },
+  { path: "/admin/attendance", label: "Chấm công" },
   { path: "/admin/settings", label: "Cài đặt" },
 ];
 

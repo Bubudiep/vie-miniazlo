@@ -1,4 +1,4 @@
-import pb, { Store, User, Product, ProductInput, ProductCategory, Table, TableLayout, TableMap, TableBill, TableBillSessionSummary, TableBillCustomer, TableBillProduct, TableBillHistoryEvent, TableBillingReport, AdminDashboardReport, InventoryItem, InventoryMovement, InventorySettings, Customer, WalletOrder, WalletSummary, WalletTransactionPage, WalletUser, WalletTopup, WalletTopupCreateResult, WalletTopupPayment, XuAdminUser, XuCheckinResult, XuRedemption, XuReferralSummary, XuReward, XuSettings, XuSummary, XuTransactionPage, BillPaymentSettings, AdminNotification, Promotion, CustomerSegmentData, StaffAccount, StaffQueueItem, TableCanvasPosition, UserTableLayout } from './pocketbase';
+import pb, { Store, User, Product, ProductInput, ProductCategory, Table, TableLayout, TableMap, TableBill, TableBillSessionSummary, TableBillCustomer, TableBillProduct, TableBillHistoryEvent, TableBillingReport, AdminDashboardReport, InventoryItem, InventoryMovement, InventorySettings, Customer, WalletOrder, WalletSummary, WalletTransactionPage, WalletUser, WalletTopup, WalletTopupCreateResult, WalletTopupPayment, WalletPromoSettings, XuAdminUser, XuCheckinResult, XuRedemption, XuReferralSummary, XuReward, XuSettings, XuSummary, XuTransactionPage, BillPaymentSettings, AdminNotification, Promotion, CustomerSegmentData, StaffAccount, StaffAttendance, StaffQueueItem, TableCanvasPosition, UserTableLayout } from './pocketbase';
 
 export const registrationAdminService = {
   get() {
@@ -18,6 +18,15 @@ export const staffAdminService = {
   },
   update(id: string, input: { role?: 'staff' | 'user'; locked?: boolean }) {
     return pb.send<{ id: string; role: StaffAccount['role']; locked: boolean }>(`/api/admin/staff/${encodeURIComponent(id)}`, { method: 'PATCH', body: input });
+  },
+};
+
+export const staffAttendanceService = {
+  list(workDate: string) {
+    return pb.send<{ items: (StaffAccount & { attendance: StaffAttendance | null })[] }>(`/api/admin/attendance?date=${encodeURIComponent(workDate)}`, { method: 'GET' });
+  },
+  save(input: Omit<StaffAttendance, 'id' | 'staff'> & { staff: string }) {
+    return pb.send<StaffAttendance>('/api/admin/attendance', { method: 'POST', body: input });
   },
 };
 
@@ -108,6 +117,10 @@ export const productCategoryService = {
 
   async create(data: Pick<ProductCategory, 'store' | 'name'>) {
     return await pb.collection('product_categories').create<ProductCategory>(data);
+  },
+
+  async update(id: string, name: string) {
+    return await pb.collection('product_categories').update<ProductCategory>(id, { name });
   },
 
   async delete(id: string) {
@@ -412,6 +425,12 @@ export const walletService = {
   async updatePromoExpiry(input: { fromDate: string; toDate: string; newExpiresAt: string; userIds?: string[] }) {
     return pb.send<{ updated: number }>('/api/admin/wallets/promo-expiry-bulk', { method: 'POST', body: input });
   },
+  async getPromoSettings() {
+    return pb.send<WalletPromoSettings>('/api/admin/wallet-promo/settings', { method: 'GET' });
+  },
+  async savePromoSettings(input: WalletPromoSettings) {
+    return pb.send<WalletPromoSettings>('/api/admin/wallet-promo/settings', { method: 'PUT', body: input });
+  },
   async getOrder(orderId: string) {
     return pb.send<WalletOrder>(`/api/orders/detail?orderId=${encodeURIComponent(orderId)}`, { method: 'GET' });
   },
@@ -436,7 +455,25 @@ export const walletService = {
   async rejectTopup(topupId: string, reason: string) {
     return pb.send<{ topup: WalletTopup }>(`/api/admin/wallet-topups/${encodeURIComponent(topupId)}/reject`, { method: 'POST', body: { reason } });
   },
+  async getSpinSettings() {
+    return pb.send<{ minTopup: number; prizes: WalletSpinPrize[] }>('/api/admin/wallet-spin/settings', { method: 'GET' });
+  },
+  async saveSpinSettings(input: { minTopup: number; prizes: WalletSpinPrize[] }) {
+    return pb.send<{ minTopup: number; prizes: WalletSpinPrize[] }>('/api/admin/wallet-spin/settings', { method: 'PUT', body: input });
+  },
+  async getSpins() {
+    return pb.send<{ minTopup: number; prizes: WalletSpinPrize[]; items: WalletSpinItem[] }>('/api/wallet/spins', { method: 'GET' });
+  },
+  async spinTopup(topupId: string) {
+    return pb.send<{ id: string; prizeName: string; prizeAmount: number; alreadySpun: boolean }>('/api/wallet/spins', { method: 'POST', body: { topupId } });
+  },
+  async activateSpin(userId: string) { return pb.send<{ id: string; alreadyActive: boolean }>('/api/admin/wallet-spin/sessions', { method: 'POST', body: { userId } }); },
+  async getSpinSessions() { return pb.send<{ id: string; status: string; created: string }[]>('/api/wallet/spin-sessions', { method: 'GET' }); },
+  async spinSession(id: string) { return pb.send<{ prizeName: string; prizeAmount: number; alreadySpun: boolean }>(`/api/wallet/spin-sessions/${encodeURIComponent(id)}`, { method: 'POST' }); },
 };
+
+export interface WalletSpinPrize { name: string; amount: number; probability: number }
+export interface WalletSpinItem { topupId: string; amount: number; eligible: boolean; created: string; result: { id: string; prizeName: string; prizeAmount: number; created: string } | null }
 
 export const xuService = {
   getMine() {

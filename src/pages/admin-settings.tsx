@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 const sections = [
   { title: "Vận hành", items: [["Sơ đồ bàn", "/", "zi-list-1"], ["Mặt hàng", "/admin/products", "zi-list-1"], ["Kho hàng", "/admin/inventory", "zi-inbox"], ["Thiết lập kho", "/admin/inventory/settings", "zi-setting"], ["Lịch sử bill", "/admin/bill-history", "zi-clock-1"], ["Báo cáo doanh thu", "/admin/reports", "zi-list-1"]] },
   { title: "Khách hàng và nhân sự", items: [["Duyệt tài khoản", "/admin/registration", "zi-check-circle"], ["Nhân viên", "/admin/staff", "zi-user"], ["Nhóm khách và thẻ thành viên", "/admin/customer-segments", "zi-list-1"], ["Khuyến mại", "/admin/promotions", "zi-list-1"]] },
-  { title: "Tài chính và chương trình", items: [["Tài khoản nhận tiền QR", "/account", "zi-list-1"], ["Quản lý ví", "/admin/wallets", "zi-list-1"], ["Theo dõi nạp tiền", "/admin/wallet-topups", "zi-check-circle"], ["Quản lý Xu", "/admin/xu", "zi-list-1"]] },
+  { title: "Tài chính và chương trình", items: [["Tài khoản nhận tiền QR", "/account", "zi-list-1"], ["Quản lý ví", "/admin/wallets", "zi-list-1"], ["Theo dõi nạp tiền", "/admin/wallet-topups", "zi-check-circle"], ["Thưởng nạp vào ví khuyến mãi", "/admin/wallet-promo", "zi-star"], ["Quay số nạp tiền", "/admin/wallet-spin", "zi-star"], ["Quản lý Xu", "/admin/xu", "zi-list-1"]] },
 ] as const;
 
 export default function AdminSettingsPage() {

@@ -10,8 +10,11 @@ import LoginPage from "@/pages/login";
 import WalletPage from "@/pages/wallet";
 import AdminWalletsPage from "@/pages/admin-wallets";
 import AdminWalletTopupsPage from "@/pages/admin-wallet-topups";
+import AdminWalletSpinPage from "@/pages/admin-wallet-spin";
+import AdminWalletPromoSettingsPage from "@/pages/admin-wallet-promo-settings";
 import AdminRegistrationPage from "@/pages/admin-registration";
 import AdminStaffPage from "@/pages/admin-staff";
+import AdminAttendancePage from "@/pages/admin-attendance";
 import AdminProductsPage from "@/pages/admin-products";
 import AdminBillHistoryPage from "@/pages/admin-bill-history";
 import AdminReportsPage from "@/pages/admin-reports";
@@ -77,9 +80,12 @@ function AppRoutes() {
         <Route path="/admin/settings" element={<ProtectedRoute><AdminSettingsPage /></ProtectedRoute>} />
         <Route path="/admin/wallets" element={<ProtectedRoute><AdminWalletsPage /></ProtectedRoute>} />
         <Route path="/admin/wallet-topups" element={<ProtectedRoute><AdminWalletTopupsPage /></ProtectedRoute>} />
+        <Route path="/admin/wallet-spin" element={<ProtectedRoute><AdminWalletSpinPage /></ProtectedRoute>} />
+        <Route path="/admin/wallet-promo" element={<ProtectedRoute><AdminWalletPromoSettingsPage /></ProtectedRoute>} />
         <Route path="/admin/xu" element={<ProtectedRoute><AdminXuPage /></ProtectedRoute>} />
         <Route path="/admin/registration" element={<ProtectedRoute><AdminRegistrationPage /></ProtectedRoute>} />
         <Route path="/admin/staff" element={<ProtectedRoute><AdminStaffPage /></ProtectedRoute>} />
+        <Route path="/admin/attendance" element={<ProtectedRoute><AdminAttendancePage /></ProtectedRoute>} />
         <Route path="/admin/products" element={<ProtectedRoute><AdminProductsPage /></ProtectedRoute>} />
         <Route path="/admin/bill-history" element={<ProtectedRoute><AdminBillHistoryPage /></ProtectedRoute>} />
         <Route path="/admin/reports" element={<ProtectedRoute><AdminReportsPage /></ProtectedRoute>} />

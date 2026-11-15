@@ -243,6 +243,15 @@ export interface StaffAccount {
   locked: boolean;
 }
 
+export interface StaffAttendance {
+  id: string;
+  staff: string;
+  workDate: string;
+  status: 'present' | 'absent';
+  checkIn: string;
+  checkOut: string;
+}
+
 export interface PromotionSnapshot {
   id: string;
   name: string;
@@ -396,6 +405,19 @@ export interface WalletPromoLot {
   remainingAmount: number;
   expiresAt: string;
   status: 'active' | 'expired' | 'consumed';
+}
+
+export interface WalletPromoTier {
+  minTopup: number;
+  type: 'fixed' | 'percent';
+  value: number;
+}
+
+export interface WalletPromoSettings {
+  tiers: WalletPromoTier[];
+  maxPromoBalance: number;
+  expiryMode: 'days' | 'date';
+  expiryDate: string;
 }
 
 export interface WalletSummary {

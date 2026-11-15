@@ -8,7 +8,7 @@ try {
 }
 const pocketBaseBinary = process.platform === "win32"
   ? path.join(pocketBaseDir, "pocketbase.exe")
-  : path.resolve(__dirname, "..", "pocketbase");
+  : path.join(pocketBaseDir, "pocketbase");
 
 module.exports = {
   apps: [
@@ -29,7 +29,7 @@ module.exports = {
       name: "billiards-pocketbase",
       cwd: pocketBaseDir,
       script: pocketBaseBinary,
-      args: `serve --http=127.0.0.1:8390 --dir="${path.join(pocketBaseDir, "pb_data")}" --migrationsDir="${path.join(pocketBaseDir, "pb_migrations")}" --hooksDir="${path.join(pocketBaseDir, "pb_hooks")}"`,
+      args: "serve --http=127.0.0.1:8390 --dir=pb_data --migrationsDir=pb_migrations --hooksDir=pb_hooks",
       interpreter: "none",
       env: process.env.SEPAY_WEBHOOK_SECRET ? { SEPAY_WEBHOOK_SECRET: process.env.SEPAY_WEBHOOK_SECRET } : {},
       autorestart: true,

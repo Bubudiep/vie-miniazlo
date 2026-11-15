@@ -3,7 +3,9 @@ import { Icon, Page, Spinner, Text, Sheet, Box, useSnackbar } from "zmp-ui";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { walletService } from "@/api/services";
+import pb from "@/api/pocketbase";
 import type { WalletSummary, WalletTransaction, WalletTopup, WalletTopupPayment } from "@/api/pocketbase";
+import type { WalletSpinItem, WalletSpinPrize } from "@/api/services";
 import { vietnamDateBounds } from "@/utils/format";
 
 type BankApp = { appId: string; appName: string; appLogo?: string; autofill?: number };
@@ -28,6 +30,10 @@ export default function WalletPage() {
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [topups, setTopups] = useState<WalletTopup[]>([]);
+  const [spinData, setSpinData] = useState<{ minTopup: number; prizes: WalletSpinPrize[]; items: WalletSpinItem[] }>({ minTopup: 0, prizes: [], items: [] });
+  const [spinningTopup, setSpinningTopup] = useState("");
+  const [activeSpin, setActiveSpin] = useState<{ id: string } | null>(null);
+  const [spinningSession, setSpinningSession] = useState(false);
   const [topupOpen, setTopupOpen] = useState(false);
   const [topupAmountInput, setTopupAmountInput] = useState("100.000");
   const [topup, setTopup] = useState<WalletTopup | null>(null);
@@ -50,12 +56,14 @@ export default function WalletPage() {
     let active = true;
     const refreshWallet = async (initial = false) => {
       try {
-        const [summary, history, topupHistory] = await Promise.all([walletService.getMine(), walletService.getMyTransactions(), walletService.getMyTopups()]);
+        const [summary, history, topupHistory, spins, sessions] = await Promise.all([walletService.getMine(), walletService.getMyTransactions(), walletService.getMyTopups(), walletService.getSpins(), walletService.getSpinSessions()]);
         if (!active) return;
         setWallet(summary);
         setTransactions(history.items);
         setHistoryTotal(history.totalItems);
         setTopups(topupHistory.items);
+        setSpinData(spins);
+        if (sessions[0]) setActiveSpin({ id: sessions[0].id });
         setTopup((current) => topupHistory.items.find((item) => item.id === current?.id) || current);
       } catch {
         if (initial && active) setError("Không thể tải thông tin ví. Vui lòng thử lại.");
@@ -75,6 +83,17 @@ export default function WalletPage() {
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+    const subscription = pb.collection("wallet_spin_sessions").subscribe("*", ({ action, record }) => {
+      if (!active || record.user !== user.id) return;
+      if (action === "create" && record.status === "pending") setActiveSpin({ id: record.id });
+      if (action === "update" && record.status !== "pending") setActiveSpin((current) => current?.id === record.id ? null : current);
+    });
+    return () => { active = false; void subscription.then((unsubscribe) => unsubscribe()).catch(() => {}); };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!topupOpen || topup?.status !== "paid") return;
@@ -143,6 +162,30 @@ export default function WalletPage() {
     } finally {
       setTopupBusy(false);
     }
+  };
+
+  const spin = async (topupId: string) => {
+    setSpinningTopup(topupId);
+    try {
+      const result = await walletService.spinTopup(topupId);
+      openSnackbar({ text: result.prizeAmount > 0 ? `Bạn trúng ${result.prizeName}: ${money(result.prizeAmount)}!` : result.prizeName, type: result.prizeAmount > 0 ? "success" : "warning", position: "top" });
+      const [summary, spins] = await Promise.all([walletService.getMine(), walletService.getSpins()]);
+      setWallet(summary);
+      setSpinData(spins);
+    } catch (error: any) {
+      openSnackbar({ text: error?.response?.data?.error || "Không thể quay số, vui lòng thử lại", type: "error", position: "top" });
+    } finally { setSpinningTopup(""); }
+  };
+  const spinAdminSession = async () => {
+    if (!activeSpin) return;
+    setSpinningSession(true);
+    try {
+      const result = await walletService.spinSession(activeSpin.id);
+      setActiveSpin(null);
+      openSnackbar({ text: result.prizeAmount > 0 ? `Bạn trúng ${result.prizeName}: ${money(result.prizeAmount)}!` : result.prizeName, type: result.prizeAmount > 0 ? "success" : "warning", position: "top" });
+      setWallet(await walletService.getMine());
+    } catch (error: any) { openSnackbar({ text: error?.response?.data?.error || "Không thể quay số, vui lòng thử lại", type: "error", position: "top" }); }
+    finally { setSpinningSession(false); }
   };
 
   const closeTopup = async () => {
@@ -225,6 +268,7 @@ export default function WalletPage() {
 
   return (
     <Page className="min-h-screen bg-slate-50 pb-24 dark:bg-black">
+      {activeSpin && <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/60 px-4"><section className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-5 text-center shadow-xl"><Text.Title size="small">Bạn được mời quay số</Text.Title><Text size="small" className="block text-slate-600">Admin đã bật một lượt quay cho bạn.</Text><div className="grid grid-cols-2 gap-2">{spinData.prizes.slice(0, 6).map((prize, index) => <div key={`${prize.name}-${index}`} className="rounded-lg border border-amber-100 bg-amber-50 px-2 py-2 text-xs"><strong className="block truncate">{prize.name}</strong><span>{money(prize.amount)}</span></div>)}</div><button type="button" disabled={spinningSession} onClick={() => void spinAdminSession()} className="min-h-12 w-full rounded-xl bg-amber-500 text-sm font-semibold text-white disabled:opacity-60">{spinningSession ? "Đang quay..." : "Quay ngay"}</button></section></div>}
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-200 bg-white px-4 pb-3 pt-12 dark:border-white/10 dark:bg-black">
         <button type="button" aria-label="Quay lại" onClick={() => navigate(-1)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 dark:bg-white/10"><Icon icon="zi-arrow-left" /></button>
         <Text.Title size="small" className="flex-1">Ví tài khoản</Text.Title>
@@ -237,6 +281,7 @@ export default function WalletPage() {
           <div className="rounded-2xl bg-white p-4 shadow-sm dark:bg-zinc-900"><Text size="xSmall" className="text-slate-500">Tài khoản khuyến mại</Text><Text.Title className="mt-2 text-orange-500">{money(wallet?.promoBalance || 0)}</Text.Title></div>
         </section>
         {topups.length > 0 && <section className="rounded-2xl bg-white p-4 shadow-sm dark:bg-zinc-900"><div className="mb-3 flex items-center justify-between"><Text.Title size="small">Yêu cầu nạp gần đây</Text.Title><Text size="xSmall" className="text-slate-500">{topups.length}</Text></div><div className="space-y-3">{topups.slice(0, 3).map((item) => <div key={item.id} className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0 dark:border-white/10"><div className="min-w-0"><Text size="small" className="font-semibold">{money(item.amount)}</Text><Text size="xSmall" className="mt-1 block text-slate-500">Mã chuyển khoản: {item.transferCode}</Text></div><Text size="xSmall" className={item.status === "paid" ? "text-green-600" : item.status === "rejected" ? "text-red-600" : "text-orange-600"}>{statusLabel[item.status]}</Text></div>)}</div></section>}
+        {spinData.minTopup > 0 && spinData.prizes.length > 0 && <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4"><div className="flex items-center gap-2"><Icon icon="zi-star" className="text-amber-600" /><Text.Title size="small">Quay số nạp tiền</Text.Title></div><Text size="xSmall" className="block text-slate-600">Nạp từ {money(spinData.minTopup)} để nhận một lượt quay cho mỗi giao dịch.</Text><div className="grid grid-cols-2 gap-2">{spinData.prizes.map((prize, index) => <div key={`${prize.name}-${index}`} className="rounded-lg border border-amber-100 bg-white px-3 py-2"><Text size="xSmall" className="block truncate font-semibold">{prize.name}</Text><Text size="xSmall" className="text-slate-500">{money(prize.amount)} · {prize.probability}%</Text></div>)}</div><div className="space-y-2">{spinData.items.slice(0, 5).map((item) => <div key={item.topupId} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2"><div className="min-w-0"><Text size="xSmall" className="block font-medium">Nạp {money(item.amount)}</Text>{item.result && <Text size="xSmall" className="block truncate text-emerald-700">{item.result.prizeName}{item.result.prizeAmount > 0 ? ` · +${money(item.result.prizeAmount)}` : ""}</Text>}</div>{item.result ? <Text size="xSmall" className="text-slate-500">Đã quay</Text> : item.eligible ? <button type="button" disabled={!!spinningTopup} onClick={() => void spin(item.topupId)} className="min-h-9 shrink-0 rounded-lg bg-amber-500 px-3 text-xs font-semibold text-white disabled:opacity-60">{spinningTopup === item.topupId ? "Đang quay..." : "Quay ngay"}</button> : <Text size="xSmall" className="text-slate-400">Chưa đủ điều kiện</Text>}</div>)}</div></section>}
         <section className="rounded-2xl bg-white p-4 shadow-sm dark:bg-zinc-900"><div className="mb-3 flex items-center justify-between"><Text.Title size="small">Khuyến mại sắp hết hạn</Text.Title><Icon icon="zi-star" className="text-orange-500" /></div>{wallet?.promoLots.length ? wallet.promoLots.map((lot) => <div key={lot.id} className="flex items-center justify-between border-b border-slate-100 py-3 last:border-0 dark:border-white/10"><div><Text size="small">Còn {money(lot.remainingAmount)}</Text><Text size="xSmall" className="text-slate-500">Hết hạn {new Date(lot.expiresAt).toLocaleDateString("vi-VN")}</Text></div><Text size="xSmall" className="text-orange-600">Ưu tiên dùng trước</Text></div>) : <Text size="small" className="text-slate-500">Không có lô khuyến mại còn hạn.</Text>}</section>
         <section className="rounded-2xl bg-white p-4 shadow-sm dark:bg-zinc-900"><div className="mb-2 flex items-center justify-between"><Text.Title size="small">Lịch sử giao dịch</Text.Title><button type="button" aria-label="Lọc lịch sử" onClick={() => setFilterOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 dark:bg-white/10"><Icon icon="zi-filter" /></button></div>{visibleTransactions.length ? visibleTransactions.map((item) => <div key={item.id} className="flex items-center justify-between border-b border-slate-100 py-3 last:border-0 dark:border-white/10"><div className="min-w-0"><Text size="small" className="truncate">{item.reason}</Text><Text size="xSmall" className="text-slate-500">{new Date(item.created).toLocaleString("vi-VN")} · {item.wallet_type === "promo" ? "Khuyến mại" : "Tài khoản chính"}</Text></div><Text size="small" className={item.direction === "credit" ? "font-semibold text-green-600" : "font-semibold text-red-500"}>{item.direction === "credit" ? "+" : "-"}{money(item.amount)}</Text></div>) : <Text size="small" className="text-slate-500">Chưa có giao dịch phù hợp.</Text>}{transactions.length < historyTotal && <button type="button" disabled={historyLoading} onClick={() => void loadMoreHistory()} className="mt-3 w-full rounded-lg border py-2 text-sm text-green-700 disabled:opacity-50">{historyLoading ? "Đang tải..." : "Xem thêm"}</button>}</section>
       </main>

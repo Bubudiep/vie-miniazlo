@@ -407,6 +407,51 @@ routerAdd("GET", "/api/admin/wallets/users", (c) => {
   return c.json(200, users.map((user) => ({ id: user.id, username: user.get("username"), email: user.get("email") || "", role: user.get("role") || "user" })))
 })
 
+routerAdd("GET", "/api/admin/wallet-promo/settings", (c) => {
+  const auth = c.requestInfo().auth || c.auth
+  if (!auth) throw new UnauthorizedError("Cần đăng nhập")
+  if (auth.get("role") !== "admin") throw new ForbiddenError("Chỉ admin mới được thao tác")
+  const store = String(auth.get("store") || "")
+  if (!store) throw new ForbiddenError("Tài khoản chưa thuộc cửa hàng")
+  const promo = require(`${__hooks}/wallet_promo.js`)
+  return c.json(200, promo.getSettings($app, store))
+})
+
+routerAdd("PUT", "/api/admin/wallet-promo/settings", (c) => {
+  const info = c.requestInfo()
+  const auth = info.auth || c.auth
+  if (!auth) throw new UnauthorizedError("Cần đăng nhập")
+  if (auth.get("role") !== "admin") throw new ForbiddenError("Chỉ admin mới được thao tác")
+  const store = String(auth.get("store") || "")
+  if (!store) throw new ForbiddenError("Tài khoản chưa thuộc cửa hàng")
+  const input = info.body || {}
+  const maxPromoBalance = Number(input.maxPromoBalance)
+  if (!Number.isSafeInteger(maxPromoBalance) || maxPromoBalance < 0) throw new BadRequestError("Mức tối đa ví khuyến mãi không hợp lệ")
+  if (!Array.isArray(input.tiers) || input.tiers.length > 50) throw new BadRequestError("Danh sách mốc thưởng không hợp lệ")
+  const thresholds = new Set()
+  const tiers = input.tiers.map((tier) => {
+    const minTopup = Number(tier.minTopup)
+    const value = Number(tier.value)
+    const type = String(tier.type || "")
+    if (!Number.isSafeInteger(minTopup) || minTopup < 1 || minTopup > 100000000 || thresholds.has(minTopup)) throw new BadRequestError("Mốc nạp phải là số nguyên dương, không trùng nhau và tối đa 100.000.000đ")
+    if (!["fixed", "percent"].includes(type) || !Number.isFinite(value) || value <= 0 || (type === "fixed" && (!Number.isSafeInteger(value) || value > 100000000)) || (type === "percent" && value > 100)) throw new BadRequestError("Tiền thưởng hoặc tỷ lệ phần trăm không hợp lệ")
+    thresholds.add(minTopup)
+    return { minTopup, type, value }
+  })
+  const expiryMode = String(input.expiryMode || "")
+  const expiryDate = String(input.expiryDate || "")
+  if (!["days", "date"].includes(expiryMode)) throw new BadRequestError("Kiểu thời hạn không hợp lệ")
+  if (expiryMode === "date" && (!/^\d{4}-\d{2}-\d{2}$/.test(expiryDate) || !Number.isFinite(new Date(expiryDate + "T23:59:59.999+07:00").getTime()) || new Date(expiryDate + "T23:59:59.999+07:00").getTime() <= Date.now())) throw new BadRequestError("Ngày hết hạn phải là ngày tương lai hợp lệ")
+  const clean = { tiers, maxPromoBalance, expiryMode, expiryDate: expiryMode === "date" ? expiryDate : "" }
+  let record
+  try { record = $app.findFirstRecordByFilter("wallet_promo_settings", "store = {:store}", { store }) }
+  catch (e) { record = new Record($app.findCollectionByNameOrId("wallet_promo_settings")); record.set("store", store) }
+  record.set("settings", JSON.stringify(clean))
+  record.set("updated_by", auth.id)
+  $app.save(record)
+  return c.json(200, clean)
+})
+
 routerAdd("GET", "/api/admin/wallets/detail", (c) => {
   const info = c.requestInfo()
   const auth = info.auth || c.auth
@@ -799,6 +844,7 @@ routerAdd("POST", "/api/webhooks/sepay", (c) => {
     const transaction = new Record(txApp.findCollectionByNameOrId("wallet_transactions"))
     transaction.set("wallet", wallet.id); transaction.set("user", topup.get("user")); transaction.set("store", store); transaction.set("wallet_type", "main"); transaction.set("direction", "credit"); transaction.set("amount", amount); transaction.set("reason", "Nạp tiền SePay " + topup.get("transfer_code")); transaction.set("reference_type", "topup"); transaction.set("reference_id", topup.id); transaction.set("idempotency_key", "topup-" + topup.id); transaction.set("balance_before", before); transaction.set("balance_after", before + amount)
     txApp.save(transaction)
+    require(`${__hooks}/wallet_promo.js`).awardTopupBonus(txApp, Record, wallet, topup, store)
     topup.set("status", "paid"); topup.set("reviewed_at", new Date().toISOString()); topup.set("gateway_transaction_id", gatewayId); txApp.save(topup)
     const txEvent = txApp.findRecordById("wallet_webhook_events", event.id)
     txEvent.set("store", store); txEvent.set("topup", topup.id); txEvent.set("status", "processed"); txApp.save(txEvent)
@@ -935,6 +981,7 @@ routerAdd("POST", "/api/admin/wallet-topups/{topupId}/approve", (c) => {
     const transaction = new Record(txApp.findCollectionByNameOrId("wallet_transactions"))
     transaction.set("wallet", wallet.id); transaction.set("user", target.id); transaction.set("store", store); transaction.set("wallet_type", "main"); transaction.set("direction", "credit"); transaction.set("amount", amount); transaction.set("reason", "Nạp tiền qua QR " + topup.get("transfer_code")); transaction.set("actor", auth.id); transaction.set("reference_type", "topup"); transaction.set("reference_id", topup.id); transaction.set("idempotency_key", "topup-" + topup.id); transaction.set("balance_before", before); transaction.set("balance_after", before + amount)
     txApp.save(transaction)
+    require(`${__hooks}/wallet_promo.js`).awardTopupBonus(txApp, Record, wallet, topup, store, auth.id)
     topup.set("status", "paid"); topup.set("reviewed_by", auth.id); topup.set("reviewed_at", new Date().toISOString()); topup.set("gateway_transaction_id", gatewayId); topup.set("note", note || topup.get("note") || ""); topup.set("rejection_reason", "")
     txApp.save(topup)
     response = { alreadyPaid: false, topup: toJson(topup, target), wallet: { id: wallet.id, mainBalance: before + amount } }
