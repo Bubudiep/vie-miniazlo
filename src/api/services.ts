@@ -1,4 +1,4 @@
-import pb, { Store, User, Product, ProductInput, ProductCategory, Table, TableLayout, TableMap, TableBill, TableBillSessionSummary, TableBillCustomer, TableBillProduct, TableBillHistoryEvent, TableBillingReport, AdminDashboardReport, InventoryItem, InventoryMovement, InventorySettings, Customer, WalletOrder, WalletSummary, WalletTransactionPage, WalletUser, WalletTopup, WalletTopupCreateResult, WalletTopupPayment, WalletPromoSettings, XuAdminUser, XuCheckinResult, XuRedemption, XuReferralSummary, XuReward, XuSettings, XuSummary, XuTransactionPage, BillPaymentSettings, AdminNotification, Promotion, CustomerSegmentData, StaffAccount, StaffAttendance, StaffQueueItem, TableCanvasPosition, UserTableLayout } from './pocketbase';
+import pb, { Store, User, Product, ProductInput, ProductCategory, Table, TableLayout, TableMap, TableBill, TableBillSessionSummary, TableBillCustomer, TableBillProduct, TableBillHistoryEvent, TableBillingReport, AdminDashboardReport, InventoryItem, InventoryMovement, InventorySettings, Customer, WalletOrder, WalletSummary, WalletTransactionPage, WalletUser, WalletTopup, WalletTopupCreateResult, WalletTopupPayment, WalletPromoSettings, XuAdminUser, XuCheckinResult, XuRedemption, XuReferralSummary, XuReward, XuSettings, XuSummary, XuTransactionPage, BillPaymentSettings, AdminNotification, Promotion, CustomerSegmentData, StaffAccount, StaffAttendance, StaffQueueItem } from './pocketbase';
 
 export const registrationAdminService = {
   get() {
@@ -183,20 +183,6 @@ export const tableService = {
     return pb.send<{ ok: boolean; name: string }>('/api/table-billing/action', { method: 'POST', body: { action: 'rename_table', tableId: id, name } });
   },
 
-  async getUserLayout(storeId: string, userId: string) {
-    try {
-      return await pb.collection('user_table_layouts').getFirstListItem<UserTableLayout>(`store="${storeId}" && user="${userId}"`);
-    } catch (error: any) {
-      if (error?.status === 404) return null;
-      throw error;
-    }
-  },
-
-  async saveUserLayout(storeId: string, userId: string, positions: Record<string, TableCanvasPosition>) {
-    const current = await this.getUserLayout(storeId, userId);
-    if (current) return pb.collection('user_table_layouts').update<UserTableLayout>(current.id, { positions });
-    return pb.collection('user_table_layouts').create<UserTableLayout>({ store: storeId, user: userId, positions });
-  }
 };
 
 export const tableBillingService = {

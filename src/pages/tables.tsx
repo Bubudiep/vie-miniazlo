@@ -26,6 +26,8 @@ type NumberingOrder = "row" | "column";
 type CanvasPointer = { x: number; y: number };
 type DragState = { tableId: string; offsetX: number; offsetY: number };
 
+const TABLE_LAYOUT_STORAGE_PREFIX = "billiard:table-layout:";
+
 function messageOf(error: any, fallback: string) {
   return error?.response?.message || error?.message || fallback;
 }
@@ -37,6 +39,21 @@ function normalizeSearch(value: string) {
 function isValidPosition(value: unknown): value is TableCanvasPosition {
   return Boolean(value) && Number.isInteger((value as TableCanvasPosition).x) && Number.isInteger((value as TableCanvasPosition).y)
     && (value as TableCanvasPosition).x >= 0 && (value as TableCanvasPosition).y >= 0;
+}
+
+function readDevicePositions(storeId: string): Positions {
+  try {
+    const stored = JSON.parse(localStorage.getItem(`${TABLE_LAYOUT_STORAGE_PREFIX}${storeId}`) || "null");
+    return stored && typeof stored === "object"
+      ? Object.fromEntries(Object.entries(stored).filter(([, position]) => isValidPosition(position)))
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDevicePositions(storeId: string, positions: Positions) {
+  localStorage.setItem(`${TABLE_LAYOUT_STORAGE_PREFIX}${storeId}`, JSON.stringify(positions));
 }
 
 function cellKey(position: TableCanvasPosition) {
@@ -134,22 +151,22 @@ export default function TablesPage() {
   const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
 
   const loadTables = async () => {
-    if (!storeId || !user?.id) {
+    if (!storeId) {
       setError("Tài khoản chưa được gắn với cửa hàng nào");
       setLoading(false);
       return;
     }
     try {
       setError("");
-      const [map, layout] = await Promise.all([tableService.getMap(), tableService.getUserLayout(storeId, user.id)]);
+      const map = await tableService.getMap();
       setTableMap(map);
-      setStoredPositions(layout?.positions || {});
+      setStoredPositions(readDevicePositions(storeId));
     } catch (loadError) {
       setError(messageOf(loadError, "Không thể tải sơ đồ bàn"));
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { void loadTables(); }, [storeId, user?.id]);
+  useEffect(() => { void loadTables(); }, [storeId]);
   useEffect(() => {
     if (!storeId || editingLayout) return;
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") tableService.getMap().then(setTableMap).catch(() => {}); }, 15000);
@@ -243,12 +260,12 @@ export default function TablesPage() {
   const closeLayoutEdit = () => { if (layoutDirty) setDiscardSheetOpen(true); else setEditingLayout(false); };
   const discardLayoutEdit = () => { setEditingLayout(false); setDiscardSheetOpen(false); setDraftPositions({}); };
   const saveLayout = async () => {
-    if (!storeId || !user?.id || !isAdmin) return;
+    if (!storeId || !isAdmin) return;
     const tableIds = new Set((tableMap?.tables || []).map((table) => table.id));
     const positionsToSave = Object.fromEntries(Object.entries(draftPositions).filter(([tableId, position]) => tableIds.has(tableId) && isValidPosition(position)));
     setLayoutSaving(true);
     try {
-      await tableService.saveUserLayout(storeId, user.id, positionsToSave);
+      saveDevicePositions(storeId, positionsToSave);
       setStoredPositions(positionsToSave); setLayoutSnapshot(positionsToSave); setEditingLayout(false);
       openSnackbar({ text: "Đã lưu sơ đồ bàn", type: "success" });
     } catch (saveError) { openSnackbar({ text: messageOf(saveError, "Không thể lưu sơ đồ bàn"), type: "error" });

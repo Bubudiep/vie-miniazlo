@@ -268,6 +268,10 @@ export default function AdminProductsPage() {
       openSnackbar({ text: "Vui lòng nhập tên, chọn danh mục và nhập giá nguyên không âm", type: "warning" });
       return;
     }
+    if (items.some((product) => product.id !== editing?.id && product.name.trim().toLocaleLowerCase("vi") === form.name.trim().toLocaleLowerCase("vi"))) {
+      openSnackbar({ text: "Mặt hàng cùng tên đã tồn tại", type: "warning" });
+      return;
+    }
     if (form.billingMode === "quantity" && form.purchasePrice.trim() && (!Number.isInteger(purchasePrice) || purchasePrice < 0)) {
       openSnackbar({ text: "Giá nhập phải là số nguyên không âm", type: "warning" });
       return;

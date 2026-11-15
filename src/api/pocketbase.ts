@@ -133,15 +133,6 @@ export interface TableCanvasPosition {
   y: number;
 }
 
-export interface UserTableLayout {
-  id: string;
-  user: string;
-  store: string;
-  positions: Record<string, TableCanvasPosition>;
-  created: string;
-  updated: string;
-}
-
 export interface TableOpenBillSummary {
   id: string;
   table: string;
@@ -346,6 +337,7 @@ export interface InventoryItem {
   onHand: number;
   reserved: number;
   available: number;
+  output30Days: number;
 }
 
 export interface InventoryMovement {

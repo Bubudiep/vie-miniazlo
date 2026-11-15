@@ -94,8 +94,11 @@ export default function AdminInventoryPage() {
   };
 
   const exportInventory = () => {
-    const rows = visible.map((item) => [item.name, item.category, item.unitLabel || "lần", item.onHand, item.reserved, item.available]);
-    downloadExcel(["Mặt hàng", "Danh mục", "Đơn vị", "Tồn hiện có", "Đang giữ", "Khả dụng"], rows, "Ton kho", `ton-kho-${new Date().toISOString().slice(0, 10)}.xlsx`, [3, 4, 5]);
+    const rows = visible.map((item) => {
+      const dailyUse = item.output30Days / 30;
+      return [item.name, item.category, item.unitLabel || "lần", item.onHand, item.reserved, item.available, item.output30Days, dailyUse ? item.available / dailyUse : "Chưa đủ dữ liệu", dailyUse ? Math.max(0, Math.ceil((dailyUse * 7 * 1.1 - item.available) * 1000) / 1000) : "Chưa đủ dữ liệu"];
+    });
+    downloadExcel(["Mặt hàng", "Danh mục", "Đơn vị", "Tồn hiện có", "Đang giữ", "Khả dụng", "Xuất 30 ngày", "Số ngày còn đủ", "Đề xuất nhập 7 ngày + 10%"], rows, "Ton kho", `ton-kho-${new Date().toISOString().slice(0, 10)}.xlsx`, [3, 4, 5, 6]);
   };
 
   const printInventory = () => {
@@ -145,6 +148,12 @@ export default function AdminInventoryPage() {
         {visible.map((item) => <article key={item.id} className="rounded-lg border border-slate-200 bg-white p-3">
           <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 flex-1"><Text size="small" className="font-semibold text-slate-900">{item.name}</Text><Text size="xSmall" className="mt-1 block text-slate-500">{item.category} · {item.unitLabel || "lần"} · Giá nhập {money(item.purchasePrice)}</Text></div><button type="button" aria-label={`Bổ sung tồn ${item.name}`} title="Bổ sung tồn" onClick={() => openMove(item, "in")} className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-700 text-white"><Icon icon="zi-plus" /></button></div>
           <div className="mt-3 grid grid-cols-3 divide-x divide-slate-200 rounded-md border border-slate-200 py-2 text-center"><div><Text size="xSmall" className="text-slate-500">Tồn hiện có</Text><Text className="mt-1 block text-base font-bold text-slate-900">{item.onHand.toLocaleString("vi-VN")}</Text></div><div><Text size="xSmall" className="text-slate-500">Đang giữ</Text><Text className="mt-1 block text-base font-bold text-amber-700">{item.reserved.toLocaleString("vi-VN")}</Text></div><div><Text size="xSmall" className="text-slate-500">Khả dụng</Text><Text className={`mt-1 block text-base font-bold ${item.available > 0 ? "text-emerald-700" : "text-rose-700"}`}>{item.available.toLocaleString("vi-VN")}</Text></div></div>
+          {(() => {
+            const dailyUse = item.output30Days / 30;
+            const daysLeft = dailyUse ? item.available / dailyUse : null;
+            const suggested = dailyUse ? Math.max(0, Math.ceil((dailyUse * 7 * 1.1 - item.available) * 1000) / 1000) : null;
+            return <div className="mt-2 grid grid-cols-2 gap-2 rounded-md bg-slate-50 p-2"><div><Text size="xSmall" className="text-slate-500">Xuất 30 ngày</Text><Text size="small" className="mt-1 block font-semibold text-slate-800">{item.output30Days.toLocaleString("vi-VN")} {item.unitLabel || "lần"}</Text></div><div><Text size="xSmall" className="text-slate-500">Tồn đủ dùng</Text><Text size="small" className="mt-1 block font-semibold text-slate-800">{daysLeft === null ? "Chưa đủ dữ liệu" : `${Math.max(0, daysLeft).toLocaleString("vi-VN", { maximumFractionDigits: 1 })} ngày`}</Text></div><div className="col-span-2 border-t border-slate-200 pt-2"><Text size="xSmall" className="text-slate-500">Đề xuất nhập cho 7 ngày tới + 10%</Text><Text size="small" className={`mt-1 block font-bold ${suggested ? "text-rose-700" : "text-emerald-700"}`}>{suggested === null ? "Chưa đủ dữ liệu" : `${suggested.toLocaleString("vi-VN")} ${item.unitLabel || "lần"}`}</Text></div></div>;
+          })()}
           <button type="button" onClick={() => openMove(item, "adjustment")} className="mt-2 min-h-9 text-xs font-semibold text-slate-600">Điều chỉnh tồn</button>
         </article>)}
       </section>}
