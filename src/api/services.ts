@@ -186,6 +186,10 @@ export const tableService = {
 };
 
 export const tableBillingService = {
+  async getPublicDetail(billId: string) {
+    const result = await pb.send<{ ok: boolean; storeName: string; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_detail', billId } });
+    return result;
+  },
   async getQueue(history = false) {
     return pb.send<{ items: StaffQueueItem[] }>('/api/table-billing/action', { method: 'POST', body: { action: 'queue_list', history } });
   },
@@ -275,11 +279,13 @@ export const tableBillHistoryService = {
     const suffix = query.toString() ? `?${query.toString()}` : '';
     return pb.send<{ items: TableBillHistoryEvent[]; page: number; hasMore: boolean }>(`/api/table-billing/history${suffix}`, { method: 'GET' });
   },
-  async report(input: { from: string; to: string; tableName?: string; productName?: string; paymentMethod?: string; page?: number }) {
+  async report(input: { from: string; to: string; tableName?: string; productName?: string; paymentMethod?: string; accountId?: string; category?: string; page?: number }) {
     const query = new URLSearchParams({ from: input.from, to: input.to });
     if (input.tableName) query.set('tableName', input.tableName);
     if (input.productName) query.set('productName', input.productName);
     if (input.paymentMethod) query.set('paymentMethod', input.paymentMethod);
+    if (input.accountId) query.set('accountId', input.accountId);
+    if (input.category) query.set('category', input.category);
     if (input.page) query.set('page', String(input.page));
     const result = await pb.send<TableBillingReport>(`/api/table-billing/report?${query.toString()}`, { method: 'GET' });
     let payments = (result.payments || []).map((payment) => ({ ...payment, items: payment.items || [] }));

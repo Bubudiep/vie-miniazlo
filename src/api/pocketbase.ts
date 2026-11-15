@@ -323,7 +323,9 @@ export interface TableBillingReport {
   hourly: { hour: string; paidBills: number; cashAmount: number; transferAmount: number; walletAmount: number; totalRevenue: number }[];
   tables: { tableName: string; paidBills: number; totalRevenue: number; cashAmount: number; transferAmount: number; walletAmount: number }[];
   products: { productId: string; name: string; unitLabel: string; quantity: number; revenue: number; billCount: number }[];
-  payments: { id: string; billId: string; tableName: string; amount: number; paymentMethod: "cash" | "transfer" | "wallet"; paidAt: string; actorName: string; items: { productId: string; name: string; unitLabel: string; quantity: number; amount: number }[] }[];
+  payments: { id: string; billId: string; tableName: string; amount: number; paymentMethod: "cash" | "transfer" | "wallet"; paidAt: string; actorId: string; actorName: string; items: { productId: string; name: string; category: string; unitLabel: string; quantity: number; amount: number }[] }[];
+  accounts: { id: string; name: string }[];
+  categories: string[];
   page: number;
   hasMore: boolean;
 }

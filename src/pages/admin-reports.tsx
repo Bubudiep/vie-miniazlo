@@ -57,6 +57,8 @@ export default function AdminReportsPage() {
   const [tableName, setTableName] = useState("");
   const [productName, setProductName] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
+  const [accountId, setAccountId] = useState("");
+  const [category, setCategory] = useState("");
   const [report, setReport] = useState<TableBillingReport | null>(null);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [inventoryLoading, setInventoryLoading] = useState(true);
@@ -68,27 +70,27 @@ export default function AdminReportsPage() {
     if (from > to) { openSnackbar({ text: "Thời điểm bắt đầu không được sau thời điểm kết thúc", type: "warning", position: "top" }); return; }
     if (nextPage === 1) setLoading(true); else setLoadingMore(true);
     try {
-      const result = await tableBillHistoryService.report({ from: fromVietnamDateTimeInput(from), to: fromVietnamDateTimeInput(to), tableName: tableName.trim(), productName: productName.trim(), paymentMethod, page: nextPage });
+      const result = await tableBillHistoryService.report({ from: fromVietnamDateTimeInput(from), to: fromVietnamDateTimeInput(to), tableName: tableName.trim(), productName: productName.trim(), paymentMethod, accountId, category, page: nextPage });
       setReport((current) => nextPage === 1 || !current ? result : { ...result, payments: [...current.payments, ...result.payments] });
     } catch (error) {
       openSnackbar({ text: messageOf(error), type: "error", position: "top" });
     } finally {
       if (nextPage === 1) setLoading(false); else setLoadingMore(false);
     }
-  }, [from, to, tableName, productName, paymentMethod, openSnackbar]);
+  }, [from, to, tableName, productName, paymentMethod, accountId, category, openSnackbar]);
 
   const exportReport = async () => {
     setExporting(true);
     try {
       if (from > to) throw new Error("Thời điểm bắt đầu không được sau thời điểm kết thúc");
-      let result = await tableBillHistoryService.report({ from: fromVietnamDateTimeInput(from), to: fromVietnamDateTimeInput(to), tableName: tableName.trim(), productName: productName.trim(), paymentMethod, page: 1 });
+      let result = await tableBillHistoryService.report({ from: fromVietnamDateTimeInput(from), to: fromVietnamDateTimeInput(to), tableName: tableName.trim(), productName: productName.trim(), paymentMethod, accountId, category, page: 1 });
       const payments = [...result.payments];
       while (result.hasMore) {
-        result = await tableBillHistoryService.report({ from: fromVietnamDateTimeInput(from), to: fromVietnamDateTimeInput(to), tableName: tableName.trim(), productName: productName.trim(), paymentMethod, page: result.page + 1 });
+        result = await tableBillHistoryService.report({ from: fromVietnamDateTimeInput(from), to: fromVietnamDateTimeInput(to), tableName: tableName.trim(), productName: productName.trim(), paymentMethod, accountId, category, page: result.page + 1 });
         payments.push(...result.payments);
       }
       downloadWorkbook([
-        { name: "Tổng quan", rows: [["Báo cáo doanh thu", "Giá trị"], ["Từ thời điểm", from], ["Đến thời điểm", to], ["Tên bàn", tableName.trim() || "Tất cả"], ["Phương thức", methodLabel[paymentMethod] || "Tất cả"], ["Tổng doanh thu (VNĐ)", result.summary.totalRevenue], ["Số hóa đơn", result.summary.paidBills], ["Tiền mặt (VNĐ)", result.summary.cashAmount], ["Chuyển khoản (VNĐ)", result.summary.transferAmount], ["Ví (VNĐ)", result.summary.walletAmount]], numericColumns: [1] },
+        { name: "Tổng quan", rows: [["Báo cáo doanh thu", "Giá trị"], ["Từ thời điểm", from], ["Đến thời điểm", to], ["Tên bàn", tableName.trim() || "Tất cả"], ["Phương thức", methodLabel[paymentMethod] || "Tất cả"], ["Tài khoản thanh toán", result.accounts.find((account) => account.id === accountId)?.name || "Tất cả"], ["Danh mục", category || "Tất cả"], ["Tổng doanh thu (VNĐ)", result.summary.totalRevenue], ["Số hóa đơn", result.summary.paidBills], ["Tiền mặt (VNĐ)", result.summary.cashAmount], ["Chuyển khoản (VNĐ)", result.summary.transferAmount], ["Ví (VNĐ)", result.summary.walletAmount]], numericColumns: [1] },
         { name: "Theo ngày", rows: [["Ngày", "Số hóa đơn", "Tổng doanh thu (VNĐ)", "Tiền mặt (VNĐ)", "Chuyển khoản (VNĐ)", "Ví (VNĐ)"], ...result.daily.map((day) => [day.date, day.paidBills, day.totalRevenue, day.cashAmount, day.transferAmount, day.walletAmount])], numericColumns: [1, 2, 3, 4, 5] },
         { name: "Theo giờ", rows: [["Thời điểm", "Số hóa đơn", "Tổng doanh thu (VNĐ)", "Tiền mặt (VNĐ)", "Chuyển khoản (VNĐ)", "Ví (VNĐ)"], ...result.hourly.map((hour) => [dateTime(hour.hour), hour.paidBills, hour.totalRevenue, hour.cashAmount, hour.transferAmount, hour.walletAmount])], numericColumns: [1, 2, 3, 4, 5] },
         { name: "Theo bàn", rows: [["Bàn", "Số hóa đơn", "Tổng doanh thu (VNĐ)", "Tiền mặt (VNĐ)", "Chuyển khoản (VNĐ)", "Ví (VNĐ)"], ...result.tables.map((table) => [table.tableName, table.paidBills, table.totalRevenue, table.cashAmount, table.transferAmount, table.walletAmount])], numericColumns: [1, 2, 3, 4, 5] },
@@ -137,7 +139,7 @@ export default function AdminReportsPage() {
 
       <form onSubmit={(event) => { event.preventDefault(); void load(); }} className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><label className="text-sm font-medium text-slate-700">Từ thời điểm<input required type="datetime-local" value={from} onChange={(event) => setFrom(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label><label className="text-sm font-medium text-slate-700">Đến thời điểm<input required type="datetime-local" value={to} onChange={(event) => setTo(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label></div>
-        <div className="grid grid-cols-2 gap-3"><label className="text-sm font-medium text-slate-700">Tên bàn<input value={tableName} onChange={(event) => setTableName(event.target.value)} placeholder="Ví dụ: Bàn 1" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label><label className="text-sm font-medium text-slate-700">Mặt hàng<input value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Tìm trong hóa đơn" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label><label className="col-span-2 text-sm font-medium text-slate-700">Phương thức<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"><option value="">Tất cả</option><option value="cash">Tiền mặt</option><option value="transfer">Chuyển khoản</option><option value="wallet">Ví</option></select></label></div>
+        <div className="grid grid-cols-2 gap-3"><label className="text-sm font-medium text-slate-700">Tên bàn<input value={tableName} onChange={(event) => setTableName(event.target.value)} placeholder="Ví dụ: Bàn 1" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label><label className="text-sm font-medium text-slate-700">Mặt hàng<input value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Tìm trong hóa đơn" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label><label className="text-sm font-medium text-slate-700">Tài khoản thanh toán<select value={accountId} onChange={(event) => setAccountId(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"><option value="">Tất cả</option>{report?.accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label><label className="text-sm font-medium text-slate-700">Danh mục<select value={category} onChange={(event) => setCategory(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"><option value="">Tất cả</option>{report?.categories.map((name) => <option key={name} value={name}>{name}</option>)}</select></label><label className="col-span-2 text-sm font-medium text-slate-700">Phương thức<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"><option value="">Tất cả</option><option value="cash">Tiền mặt</option><option value="transfer">Chuyển khoản</option><option value="wallet">Ví</option></select></label></div>
         <button type="submit" disabled={loading} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-60">{loading && <Spinner />}Xem báo cáo</button>
       </form>
 

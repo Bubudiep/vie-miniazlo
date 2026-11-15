@@ -96,7 +96,7 @@ const TabBar = () => {
     navigate(path);
   };
 
-  if (location.pathname === "/cart" || location.pathname === "/login") return null;
+  if (location.pathname === "/cart" || location.pathname === "/login" || location.pathname.startsWith("/public-bills/")) return null;
 
   const slotWidth = 100 / tabs.length;
   const pillWidth = isStretching ? PILL_STRETCH_WIDTH : PILL_REST_WIDTH;

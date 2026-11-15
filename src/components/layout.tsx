@@ -27,6 +27,7 @@ import AdminInventoryPage from "@/pages/admin-inventory";
 import AdminInventorySettingsPage from "@/pages/admin-inventory-settings";
 import AdminSettingsPage from "@/pages/admin-settings";
 import StaffQueuePage from "@/pages/staff-queue";
+import PublicBillPage from "@/pages/public-bill";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { StaffQueueProvider } from "@/contexts/StaffQueueContext";
 
@@ -50,6 +51,7 @@ function AppRoutes() {
     <>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/public-bills/:billId" element={<PublicBillPage />} />
         <Route
           path="/"
           element={<Navigate to="/home" replace />}

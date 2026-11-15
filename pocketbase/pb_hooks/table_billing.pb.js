@@ -122,8 +122,8 @@ routerAdd("GET", "/api/table-billing/history", (c) => {
     .trim()
     .slice(0, 80);
   const page = Number(query.page || 1);
-  const isAdmin = auth.get("role") === "admin";
-  const isStaff = auth.get("role") === "staff";
+  const isAdmin = !!auth && auth.get("role") === "admin";
+  const isStaff = !!auth && auth.get("role") === "staff";
   const canOperateBill = isAdmin || isStaff;
   if (!Number.isSafeInteger(page) || page < 1)
     throw new BadRequestError("Trang lịch sử không hợp lệ");
@@ -208,6 +208,8 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
     .trim()
     .slice(0, 100);
   const paymentMethod = String(query.paymentMethod || "");
+  const accountId = String(query.accountId || "").trim().slice(0, 40);
+  const selectedCategory = String(query.category || "").trim().slice(0, 80);
   const page = Number(query.page || 1);
   const parseRange = (value, end) => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -253,6 +255,21 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
     0,
     params,
   );
+  const accountOptions = {};
+  for (const event of events) {
+    const id = String(event.get("actor_id") || "");
+    if (id) accountOptions[id] = String(event.get("actor_name") || "Không rõ");
+  }
+  const productCategories = {};
+  const categoryOptions = { "Khác": true };
+  const storeProducts = $app.findRecordsByFilter("products", "store = {:store}", "category,name", -1, 0, { store });
+  for (const product of storeProducts) {
+    const category = String(product.get("category") || "").trim() || "Khác";
+    productCategories[product.id] = category;
+    categoryOptions[category] = true;
+  }
+  const accounts = Object.keys(accountOptions).map((id) => ({ id, name: accountOptions[id] })).sort((a, b) => a.name.localeCompare(b.name, "vi"));
+  const categories = Object.keys(categoryOptions).sort((a, b) => a.localeCompare(b, "vi"));
   const seenBills = {};
   const daily = {};
   const hourly = {};
@@ -266,6 +283,7 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
   for (const event of events) {
     const billId = String(event.get("bill_id") || event.id);
     if (seenBills[billId]) continue;
+    if (accountId && String(event.get("actor_id") || "") !== accountId) continue;
     seenBills[billId] = true;
     const paidAt = String(
       event.get("happened_at") || event.get("created") || "",
@@ -301,18 +319,16 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
       .map((item) => ({
         productId: String(item.get("product") || ""),
         name: String(item.get("product_name") || "Mặt hàng"),
+        category: productCategories[String(item.get("product") || "")] || "Khác",
         unitLabel: String(item.get("unit_label") || "lần"),
         quantity: Number(item.get("quantity")) || 0,
         amount: Math.max(0, Math.round(Number(item.get("line_total")) || 0)),
       }));
-    const matchingItems = productName
-      ? paidItems.filter((item) =>
-          item.name
-            .toLocaleLowerCase()
-            .includes(productName.toLocaleLowerCase()),
-        )
-      : paidItems;
-    if (productName && matchingItems.length === 0) continue;
+    const matchingItems = paidItems.filter((item) =>
+      (!productName || item.name.toLocaleLowerCase().includes(productName.toLocaleLowerCase())) &&
+      (!selectedCategory || item.category === selectedCategory),
+    );
+    if ((productName || selectedCategory) && matchingItems.length === 0) continue;
     const day = daily[localDate] || {
       date: localDate,
       paidBills: 0,
@@ -358,6 +374,7 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
       amount,
       paymentMethod: method,
       paidAt,
+      actorId: event.get("actor_id") || "",
       actorName: event.get("actor_name") || "Hệ thống",
     });
     payments[payments.length - 1].items = matchingItems;
@@ -423,6 +440,8 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
       }))
       .sort((a, b) => b.revenue - a.revenue),
     payments: payments.slice(start, start + pageSize),
+    accounts,
+    categories,
     page,
     hasMore: start + pageSize < payments.length,
   });
@@ -714,13 +733,13 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   };
   const info = c.requestInfo();
   const auth = info.auth || c.auth;
-  if (!auth) throw new UnauthorizedError("Cần đăng nhập");
-  const store = String(auth.get("store") || "");
-  if (!store) throw new ForbiddenError("Tài khoản chưa thuộc cửa hàng");
   const input = info.body || {};
   const action = String(input.action || "");
-  const isAdmin = auth.get("role") === "admin";
-  const isStaff = auth.get("role") === "staff";
+  if (!auth && action !== "public_detail") throw new UnauthorizedError("Cần đăng nhập");
+  const store = auth ? String(auth.get("store") || "") : "";
+  if (auth && !store) throw new ForbiddenError("Tài khoản chưa thuộc cửa hàng");
+  const isAdmin = !!auth && auth.get("role") === "admin";
+  const isStaff = !!auth && auth.get("role") === "staff";
   const canOperateBill = isAdmin || isStaff;
   const requireAdmin = () => {
     if (!isAdmin) throw new ForbiddenError("Chỉ admin mới được thao tác");
@@ -1886,6 +1905,17 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       items: lines,
     };
   };
+
+  if (action === "public_detail") {
+    const billId = String(input.billId || "").trim();
+    if (!billId || !/^[a-zA-Z0-9_-]{10,40}$/.test(billId))
+      throw new BadRequestError("Mã bill không hợp lệ");
+    const bill = $app.findRecordById("table_bills", billId);
+    const value = detail($app, bill);
+    let storeName = "H2 Billiards";
+    try { storeName = String($app.findRecordById("stores", bill.get("store")).get("name") || storeName); } catch (e) {}
+    return c.json(200, { ok: true, storeName, bill: value });
+  }
 
   if (action === "session_summary") {
     const bill = findStoreBill($app, String(input.billId || ""));
