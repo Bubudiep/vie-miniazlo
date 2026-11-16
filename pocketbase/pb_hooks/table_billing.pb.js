@@ -3,12 +3,13 @@
 onRecordAfterCreateSuccess((e) => {
   try {
     const queue = require(`${__hooks}/staff_queue.js`);
-    if (queue.signalEventType(e.record) !== "history")
+    const eventType = queue.signalEventType(e.record);
+    if (eventType !== "history")
       queue.signalStaffQueue(
         e.app,
         e.record.get("store"),
         queue.requestActorId(e),
-        "queue",
+        eventType,
       );
   } catch (e) {}
   return e.next();
@@ -17,12 +18,13 @@ onRecordAfterCreateSuccess((e) => {
 onRecordAfterUpdateSuccess((e) => {
   try {
     const queue = require(`${__hooks}/staff_queue.js`);
-    if (queue.signalEventType(e.record) !== "history")
+    const eventType = queue.signalEventType(e.record);
+    if (eventType !== "history")
       queue.signalStaffQueue(
         e.app,
         e.record.get("store"),
         queue.requestActorId(e),
-        "queue",
+        eventType,
       );
   } catch (e) {}
   return e.next();
@@ -539,6 +541,45 @@ routerAdd("PATCH", "/api/table-billing/payment-settings", (c) => {
   });
 });
 
+routerAdd("GET", "/api/table-billing/auto-open-products", (c) => {
+  const info = c.requestInfo();
+  const auth = info.auth || c.auth;
+  if (!auth) throw new UnauthorizedError("Cần đăng nhập");
+  if (auth.get("role") !== "admin") throw new ForbiddenError("Chỉ admin mới được xem cấu hình");
+  const store = String(auth.get("store") || "");
+  if (!store) throw new ForbiddenError("Tài khoản chưa thuộc cửa hàng");
+  const record = $app.findRecordById("stores", store);
+  let items = record.get("auto_open_products") || [];
+  if (typeof items === "string") { try { items = JSON.parse(items); } catch (e) { items = []; } }
+  return c.json(200, { items: Array.isArray(items) ? items : [] });
+});
+
+routerAdd("PATCH", "/api/table-billing/auto-open-products", (c) => {
+  const info = c.requestInfo();
+  const auth = info.auth || c.auth;
+  if (!auth) throw new UnauthorizedError("Cần đăng nhập");
+  if (auth.get("role") !== "admin") throw new ForbiddenError("Chỉ admin mới được cập nhật cấu hình");
+  const store = String(auth.get("store") || "");
+  if (!store) throw new ForbiddenError("Tài khoản chưa thuộc cửa hàng");
+  const input = info.body || {};
+  if (!Array.isArray(input.items) || input.items.length > 100) throw new BadRequestError("Danh sách mặt hàng tự thêm không hợp lệ");
+  const seen = {};
+  const items = input.items.map((item) => {
+    const productId = String(item.productId || "");
+    const quantity = Number(item.quantity);
+    if (!productId || seen[productId] || !Number.isFinite(quantity) || quantity <= 0 || quantity > 10000) throw new BadRequestError("Mặt hàng hoặc số lượng mặc định không hợp lệ");
+    seen[productId] = true;
+    const product = $app.findRecordById("products", productId);
+    if (product.get("store") !== store || product.get("is_active") !== true || product.get("billing_unit") === "hour") throw new BadRequestError("Chỉ chọn mặt hàng đang bán theo số lượng hoặc khối lượng của cửa hàng");
+    if (product.get("billing_unit") === "quantity" && !Number.isInteger(quantity)) throw new BadRequestError("Số lượng mặt hàng phải là số nguyên");
+    return { productId, quantity };
+  });
+  const record = $app.findRecordById("stores", store);
+  record.set("auto_open_products", items);
+  $app.save(record);
+  return c.json(200, { items });
+});
+
 routerAdd("GET", "/api/table-billing/map", (c) => {
   const info = c.requestInfo();
   const auth = info.auth || c.auth;
@@ -735,8 +776,14 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   const auth = info.auth || c.auth;
   const input = info.body || {};
   const action = String(input.action || "");
-  if (!auth && !["public_detail", "public_request_transfer"].includes(action)) throw new UnauthorizedError("Cần đăng nhập");
+  if (!auth && !["public_detail", "public_request_transfer", "public_order"].includes(action)) throw new UnauthorizedError("Cần đăng nhập");
   let store = auth ? String(auth.get("store") || "") : "";
+  if (!auth && action === "public_order") {
+    const tableId = String(input.tableId || "").trim();
+    if (!tableId || !/^[a-zA-Z0-9_-]{10,40}$/.test(tableId)) throw new BadRequestError("Mã bàn không hợp lệ");
+    store = String($app.findRecordById("tables", tableId).get("store") || "");
+    if (!store) throw new BadRequestError("Bàn không thuộc cửa hàng");
+  }
   if (auth && !store) throw new ForbiddenError("Tài khoản chưa thuộc cửa hàng");
   const isAdmin = !!auth && auth.get("role") === "admin";
   const isStaff = !!auth && auth.get("role") === "staff";
@@ -1916,6 +1963,18 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     const latestBill = bills[0] || null;
     const bill = latestBill || null;
     const value = bill ? detail($app, bill) : null;
+    const menu = $app.findRecordsByFilter("products", "store = {:store} && is_active = true && billing_unit != 'hour'", "category,name", -1, 0, { store }).map((product) => ({
+      id: product.id,
+      store,
+      name: product.get("name"),
+      description: product.get("description") || "",
+      image: product.get("image") || "",
+      category: product.get("category") || product.get("kind") || "Khác",
+      kind: product.get("kind") || "goods",
+      price: Number(product.get("price")) || 0,
+      billingUnit: product.get("billing_unit") || "quantity",
+      unitLabel: product.get("unit_label") || (product.get("billing_unit") === "weight" ? "kg" : "lần"),
+    }));
     let storeName = "H2 Billiards";
     try { storeName = String($app.findRecordById("stores", store).get("name") || storeName); } catch (e) {}
     let payment = { bankId: "", accountNumber: "", accountName: "" };
@@ -1923,7 +1982,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       const settings = $app.findFirstRecordByFilter("bill_payment_settings", "store = {:store}", { store });
       payment = { bankId: settings.get("bank_id") || "", accountNumber: settings.get("account_number") || "", accountName: settings.get("account_name") || "" };
     } catch (e) {}
-    return c.json(200, { ok: true, storeName, tableName: table.get("name") || "Bàn", payment, bill: value });
+    return c.json(200, { ok: true, storeName, tableName: table.get("name") || "Bàn", payment, menu, bill: value });
   }
 
   if (action === "session_summary") {
@@ -2443,6 +2502,48 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       bill.set("total_amount", 0);
       bill.set("started_at", openedAt);
       txApp.save(bill);
+      const storeRecord = txApp.findRecordById("stores", store);
+      let autoItems = input.useDefaultProducts === false ? [] : storeRecord.get("auto_open_products") || [];
+      if (typeof autoItems === "string") { try { autoItems = JSON.parse(autoItems); } catch (e) { autoItems = []; } }
+      const approvalRequired = !canOperateBill;
+      (Array.isArray(autoItems) ? autoItems : []).forEach((configured) => {
+        const quantity = Number(configured.quantity);
+        if (!Number.isFinite(quantity) || quantity <= 0) return;
+        let product;
+        try { product = txApp.findRecordById("products", String(configured.productId || "")); } catch (e) { return; }
+        const unit = String(product.get("billing_unit") || "quantity");
+        if (product.get("store") !== store || product.get("is_active") !== true || unit === "hour") return;
+        if (unit === "quantity" && !Number.isInteger(quantity)) return;
+        if (!approvalRequired && product.get("kind") !== "service") ensureProductAvailable(txApp, product.id, quantity);
+        const price = Number(product.get("price"));
+        if (!Number.isInteger(price) || price < 0) throw new BadRequestError("Giá mặt hàng phải là số nguyên không âm");
+        const item = new Record(txApp.findCollectionByNameOrId("table_bill_items"));
+        item.set("store", store);
+        item.set("bill", bill.id);
+        item.set("customer", bill.get("customer"));
+        item.set("product", product.id);
+        item.set("product_name", product.get("name"));
+        item.set("billing_unit", unit);
+        item.set("unit_label", product.get("unit_label") || (unit === "weight" ? "kg" : "lần"));
+        item.set("unit_price", price);
+        item.set("purchase_price", Math.max(0, Math.round(Number(product.get("purchase_price")) || 0)));
+        item.set("quantity", quantity);
+        item.set("started_at", "");
+        item.set("paused_seconds_at_start", 0);
+        item.set("line_total", approvalRequired ? 0 : Math.round(price * quantity));
+        item.set("queue_status", approvalRequired ? "approval_pending" : "pending");
+        item.set("queued_at", openedAt);
+        txApp.save(item);
+        recordEvent(txApp, {
+          store, billId: bill.id, tableName, category: "action",
+          eventType: approvalRequired ? "order_requested" : "item_added",
+          title: (approvalRequired ? "Yêu cầu " : "Thêm ") + product.get("name"),
+          actor: auth,
+          amount: approvalRequired ? 0 : lineAmount(item, Date.parse(openedAt), bill).amount,
+          details: { itemId: item.id, productId: product.id, productName: product.get("name"), billingUnit: unit, quantity, unitPrice: price },
+          happenedAt: openedAt,
+        });
+      });
       table.set("status", "occupied");
       txApp.save(table);
       recordEvent(txApp, {
@@ -2847,11 +2948,21 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     });
   }
 
-  if (action === "add_item") {
+  const publicOrder = action === "public_order";
+  if (action === "add_item" || publicOrder) {
+    const requestedItems = publicOrder ? input.items : [{ productId: input.productId, quantity: input.quantity }];
+    if (!Array.isArray(requestedItems) || !requestedItems.length || requestedItems.length > 30)
+      throw new BadRequestError("Danh sách món không hợp lệ");
     let billId = "";
     $app.runInTransaction((txApp) => {
       const bill = findStoreBill(txApp, String(input.billId || ""));
-      if (!canOperateBill && bill.get("customer") !== auth.id)
+      if (publicOrder) {
+        const tableId = String(input.tableId || "");
+        const latest = txApp.findRecordsByFilter("table_bills", "store = {:store} && table = {:table}", "-created", 1, 0, { store, table: tableId })[0];
+        if (bill.get("table") !== tableId || !latest || latest.id !== bill.id)
+          throw new BadRequestError("Bill đã thay đổi. Vui lòng tải lại trang.");
+      }
+      if (!publicOrder && !canOperateBill && bill.get("customer") !== auth.id)
         throw new ForbiddenError(
           "Chỉ admin, nhân viên hoặc khách của bàn mới được thêm mặt hàng",
         );
@@ -2863,106 +2974,53 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
         throw new BadRequestError(
           "Hãy tiếp tục tính tiền trước khi thêm mặt hàng",
         );
-      const product = txApp.findRecordById(
-        "products",
-        String(input.productId || ""),
-      );
-      if (product.get("store") !== store || product.get("is_active") !== true)
-        throw new ForbiddenError("Mặt hàng không khả dụng tại cửa hàng");
-      const unit = String(product.get("billing_unit") || "quantity");
-      if (
-        unit === "hour" &&
-        billItems(txApp, bill.id).some(
-          (item) => item.get("billing_unit") === "hour",
-        )
-      )
-        throw new BadRequestError(
-          "Mỗi bàn chỉ được có một mặt hàng tính theo thời gian",
-        );
-      const quantity = unit === "hour" ? 1 : Number(input.quantity);
-      if (
-        !Number.isFinite(quantity) ||
-        quantity <= 0 ||
-        (unit === "quantity" && !Number.isInteger(quantity))
-      )
-        throw new BadRequestError("Số lượng không hợp lệ");
-      const approvalRequired = !canOperateBill;
-      if (
-        !approvalRequired &&
-        unit !== "hour" &&
-        product.get("kind") !== "service"
-      )
-        ensureProductAvailable(txApp, product.id, quantity);
-      const price = Number(product.get("price"));
-      if (!Number.isInteger(price) || price < 0)
-        throw new BadRequestError("Giá mặt hàng phải là số nguyên không âm");
-      const timePricing =
-        unit === "hour"
-          ? normalizeTimePricing(product.getString("time_pricing"), true)
-          : null;
-      const item = new Record(
-        txApp.findCollectionByNameOrId("table_bill_items"),
-      );
       const selectedAt = new Date().toISOString();
-      item.set("store", store);
-      item.set("bill", bill.id);
-      item.set("customer", bill.get("customer"));
-      item.set("product", product.id);
-      item.set("product_name", product.get("name"));
-      item.set("billing_unit", unit);
-      item.set(
-        "unit_label",
-        product.get("unit_label") ||
-          (unit === "hour" ? "giờ" : unit === "weight" ? "kg" : "lần"),
-      );
-      item.set("unit_price", price);
-      item.set(
-        "purchase_price",
-        Math.max(0, Math.round(Number(product.get("purchase_price")) || 0)),
-      );
-      if (timePricing) item.set("time_pricing", timePricing);
-      item.set("quantity", quantity);
-      item.set(
-        "started_at",
-        unit === "hour" && !approvalRequired ? selectedAt : "",
-      );
-      item.set(
-        "paused_seconds_at_start",
-        Number(bill.get("paused_seconds")) || 0,
-      );
-      item.set(
-        "line_total",
-        unit === "hour" || approvalRequired ? 0 : Math.round(price * quantity),
-      );
-      item.set(
-        "queue_status",
-        approvalRequired ? "approval_pending" : "pending",
-      );
-      item.set("queued_at", selectedAt);
-      txApp.save(item);
+      const approvalRequired = publicOrder || !canOperateBill;
+      for (const requested of requestedItems) {
+        const product = txApp.findRecordById("products", String(requested.productId || ""));
+        if (product.get("store") !== store || product.get("is_active") !== true)
+          throw new ForbiddenError("Mặt hàng không khả dụng tại cửa hàng");
+        const unit = String(product.get("billing_unit") || "quantity");
+        if (publicOrder && unit === "hour") throw new BadRequestError("Không thể gọi món tính theo giờ từ menu");
+        if (unit === "hour" && billItems(txApp, bill.id).some((item) => item.get("billing_unit") === "hour"))
+          throw new BadRequestError("Mỗi bàn chỉ được có một mặt hàng tính theo thời gian");
+        const quantity = unit === "hour" ? 1 : Number(requested.quantity);
+        if (!Number.isFinite(quantity) || quantity <= 0 || (unit === "quantity" && !Number.isInteger(quantity)))
+          throw new BadRequestError("Số lượng không hợp lệ");
+        if (!approvalRequired && unit !== "hour" && product.get("kind") !== "service")
+          ensureProductAvailable(txApp, product.id, quantity);
+        const price = Number(product.get("price"));
+        if (!Number.isInteger(price) || price < 0) throw new BadRequestError("Giá mặt hàng phải là số nguyên không âm");
+        const timePricing = unit === "hour" ? normalizeTimePricing(product.getString("time_pricing"), true) : null;
+        const item = new Record(txApp.findCollectionByNameOrId("table_bill_items"));
+        item.set("store", store);
+        item.set("bill", bill.id);
+        item.set("customer", bill.get("customer"));
+        item.set("product", product.id);
+        item.set("product_name", product.get("name"));
+        item.set("billing_unit", unit);
+        item.set("unit_label", product.get("unit_label") || (unit === "hour" ? "giờ" : unit === "weight" ? "kg" : "lần"));
+        item.set("unit_price", price);
+        item.set("purchase_price", Math.max(0, Math.round(Number(product.get("purchase_price")) || 0)));
+        if (timePricing) item.set("time_pricing", timePricing);
+        item.set("quantity", quantity);
+        item.set("started_at", unit === "hour" && !approvalRequired ? selectedAt : "");
+        item.set("paused_seconds_at_start", Number(bill.get("paused_seconds")) || 0);
+        item.set("line_total", unit === "hour" || approvalRequired ? 0 : Math.round(price * quantity));
+        item.set("queue_status", approvalRequired ? "approval_pending" : "pending");
+        item.set("queued_at", selectedAt);
+        txApp.save(item);
+        recordEvent(txApp, {
+          store, billId: bill.id, tableName: displayTableName(txApp, bill.get("table")),
+          category: "action", eventType: approvalRequired ? "order_requested" : "item_added",
+          title: (approvalRequired ? "Yêu cầu " : "Thêm ") + product.get("name"), actor: auth,
+          amount: approvalRequired ? 0 : lineAmount(item, Date.now(), bill).amount,
+          details: { itemId: item.id, productId: product.id, productName: product.get("name"), billingUnit: unit, quantity, unitPrice: price },
+        });
+      }
       if (!bill.get("started_at")) bill.set("started_at", selectedAt);
       bill.set("total_amount", currentTotal(txApp, bill));
       txApp.save(bill);
-      recordEvent(txApp, {
-        store,
-        billId: bill.id,
-        tableName: displayTableName(txApp, bill.get("table")),
-        category: "action",
-        eventType: approvalRequired ? "order_requested" : "item_added",
-        title: (approvalRequired ? "Yêu cầu " : "Thêm ") + product.get("name"),
-        actor: auth,
-        amount: approvalRequired
-          ? 0
-          : lineAmount(item, Date.now(), bill).amount,
-        details: {
-          itemId: item.id,
-          productId: product.id,
-          productName: product.get("name"),
-          billingUnit: unit,
-          quantity,
-          unitPrice: price,
-        },
-      });
       billId = bill.id;
     });
     return c.json(200, {

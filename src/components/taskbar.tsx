@@ -61,7 +61,7 @@ const TabBar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { historyUnread, paymentUnread } = useStaffQueue();
+  const { historyUnread, paymentUnread, requestUnread } = useStaffQueue();
   const queueTab = {
     path: "/staff/queue",
     label: "Hàng chờ",
@@ -125,12 +125,12 @@ const TabBar = () => {
           />
           {tabs.map((tab, index) => {
             const active = index === activeIndex;
-            const unread = tab.path === "/staff/queue" && (historyUnread || paymentUnread);
+            const unread = tab.path === "/staff/queue" && (historyUnread || paymentUnread || requestUnread);
             return (
               <button
                 key={tab.path}
                 type="button"
-                aria-label={unread ? `${tab.label}, lịch sử có cập nhật mới` : tab.label}
+                aria-label={unread ? `${tab.label}, có yêu cầu mới` : tab.label}
                 aria-current={active ? "page" : undefined}
                 title={tab.label}
                 onClick={() => handleNavigate(tab.path, index)}

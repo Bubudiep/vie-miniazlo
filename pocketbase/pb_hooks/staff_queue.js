@@ -5,7 +5,10 @@ module.exports.requestActorId = (event) => {
   } catch (e) { return "" }
 }
 
-module.exports.signalEventType = (record) => ["done", "cancelled"].includes(String(record.get("queue_status") || "")) ? "history" : "queue"
+module.exports.signalEventType = (record) => {
+  const status = String(record.get("queue_status") || "")
+  return status === "approval_pending" ? "requests" : ["done", "cancelled"].includes(status) ? "history" : "queue"
+}
 
 const hasField = (record, name) => {
   try { return Boolean(record.collection().fields.getByName(name)) } catch (e) { return false }

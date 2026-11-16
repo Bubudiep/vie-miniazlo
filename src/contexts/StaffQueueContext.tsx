@@ -7,6 +7,8 @@ interface StaffQueueContextValue {
   revision: number;
   historyUnread: boolean;
   paymentUnread: boolean;
+  requestUnread: boolean;
+  markRequestsRead: () => void;
   markPaymentRead: () => void;
   markHistoryRead: () => void;
 }
@@ -27,6 +29,7 @@ export function StaffQueueProvider({ children }: { children: ReactNode }) {
   const [historyState, setHistoryState] = useState({ key: "", unread: false });
   const [revision, setRevision] = useState(0);
   const [paymentUnread, setPaymentUnread] = useState(false);
+  const [requestUnread, setRequestUnread] = useState(false);
   const historyUnread = canUse && (historyState.key === storageKey ? historyState.unread : readUnread(storageKey));
 
   const setUnread = useCallback((unread: boolean) => {
@@ -42,6 +45,7 @@ export function StaffQueueProvider({ children }: { children: ReactNode }) {
     const subscription = pb.collection("staff_queue_signals").subscribe("*", ({ action, record }) => {
       if (!active || record.store !== storeId) return;
       setRevision((current) => current + 1);
+      if (action !== "delete" && record.event_type === "requests") setRequestUnread(true);
       if (action !== "delete" && record.event_type === "payment") setPaymentUnread(true);
       if (action !== "delete" && record.event_type === "history" && record.actor_id && record.actor_id !== userId) setUnread(true);
     });
@@ -54,7 +58,7 @@ export function StaffQueueProvider({ children }: { children: ReactNode }) {
     };
   }, [canUse, storeId, userId, setUnread]);
 
-  return <StaffQueueContext.Provider value={{ revision, historyUnread, paymentUnread, markPaymentRead: () => setPaymentUnread(false), markHistoryRead: () => setUnread(false) }}>
+  return <StaffQueueContext.Provider value={{ revision, historyUnread, paymentUnread, requestUnread, markRequestsRead: () => setRequestUnread(false), markPaymentRead: () => setPaymentUnread(false), markHistoryRead: () => setUnread(false) }}>
     {children}
   </StaffQueueContext.Provider>;
 }

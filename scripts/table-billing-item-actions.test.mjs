@@ -24,6 +24,9 @@ function fixture(role = 'staff', { bill = {}, item = {}, extraItems = [], failHi
     new Record('table_bills', 'bill1', { store: 'store1', table: 'table00000000001', customer: 'actor1', status: 'open', ...bill }),
     new Record('table_bill_items', 'item1', { store: 'store1', bill: 'bill1', product_name: 'Nước suối', billing_unit: 'quantity', quantity: 2, unit_price: 10000, line_total: 20000, ...item }),
     new Record('tables', 'table00000000001', { store: 'store1', name: 'Bàn 1' }),
+    new Record('products', 'product1', { store: 'store1', name: 'Coca', description: '', kind: 'drink', billing_unit: 'quantity', unit_label: 'lon', price: 12000, is_active: true }),
+    new Record('products', 'hourly1', { store: 'store1', name: 'Bàn bida', kind: 'service', billing_unit: 'hour', unit_label: 'giờ', price: 60000, is_active: true }),
+    new Record('tables', 'table00000000002', { store: 'store1', name: 'Bàn 2' }),
     ...extraItems.map(({ id, ...fields }) => new Record('table_bill_items', id, { store: 'store1', bill: 'bill1', product_name: 'Coca', billing_unit: 'quantity', quantity: 1, unit_price: 10000, line_total: 10000, ...fields })),
   ];
   const auth = new Record('users', 'actor1', { store: 'store1', role, fullname: 'Nguyễn Văn An' });
@@ -51,7 +54,7 @@ function fixture(role = 'staff', { bill = {}, item = {}, extraItems = [], failHi
       return record;
     },
     findRecordsByFilter(collection, filter, sort, limit, offset, params = {}) {
-      return records.filter((row) => row.collection === collection && (!params.bill || row.get('bill') === params.bill) && (!params.store || row.get('store') === params.store));
+      return records.filter((row) => row.collection === collection && (!params.bill || row.get('bill') === params.bill) && (!params.store || row.get('store') === params.store) && (!params.table || row.get('table') === params.table) && (collection !== 'products' || (row.get('is_active') === true && row.get('billing_unit') !== 'hour')));
     },
     save(record) {
       if (failHistory && record.collection === 'table_bill_events') throw new Error('History unavailable');
@@ -100,6 +103,12 @@ function fixture(role = 'staff', { bill = {}, item = {}, extraItems = [], failHi
 
 const events = (state) => state.records().filter((row) => row.collection === 'table_bill_events');
 const details = (state) => JSON.parse(events(state)[0].get('details'));
+
+test('approval-pending orders use the requests realtime signal', () => {
+  const module = { exports: {} };
+  vm.runInNewContext(queueSource, { module, Record, console });
+  assert.equal(module.exports.signalEventType(new Record('table_bill_items', 'item1', { queue_status: 'approval_pending' })), 'requests');
+});
 
 for (const action of ['update_item', 'update_item_time', 'delete_item']) {
   test(`user cannot call ${action} directly`, () => {
@@ -189,6 +198,49 @@ test('public table link shows the latest paid bill and an empty bill slot when n
   const result = empty.act('public_detail', { tableId: 'table00000000001' }, null);
   assert.equal(result.body.bill, null);
   assert.equal(result.body.tableName, 'Bàn 1');
+});
+
+test('public menu omits hourly products and public orders wait for store approval', () => {
+  const state = fixture();
+  const menu = state.act('public_detail', { tableId: 'table00000000001' }, null).body.menu;
+  assert.deepEqual(menu.map((product) => product.name), ['Coca']);
+  const result = state.act('public_order', {
+    tableId: 'table00000000001',
+    billId: 'bill1',
+    items: [{ productId: 'product1', quantity: 2 }],
+  }, null);
+  const requested = state.records().find((row) => row.collection === 'table_bill_items' && row.get('product') === 'product1');
+  const bill = state.records().find((row) => row.collection === 'table_bills');
+  const signal = state.records().find((row) => row.collection === 'staff_queue_signals');
+  assert.equal(result.status, 200);
+  assert.equal(requested.get('queue_status'), 'approval_pending');
+  assert.equal(requested.get('line_total'), 0);
+  assert.equal(bill.get('total_amount'), 20000);
+  assert.equal(events(state)[0].get('event_type'), 'order_requested');
+  assert.equal(signal.get('revision'), 1);
+});
+
+test('public orders reject hourly products and stale table bills', () => {
+  const state = fixture();
+  assert.throws(() => state.act('public_order', {
+    tableId: 'table00000000001', billId: 'bill1', items: [{ productId: 'hourly1', quantity: 1 }],
+  }, null), /Không thể gọi món tính theo giờ/);
+  assert.equal(state.records().filter((row) => row.collection === 'table_bill_items').length, 1);
+  assert.throws(() => state.act('public_order', {
+    tableId: 'table00000000002', billId: 'bill1', items: [{ productId: 'product1', quantity: 1 }],
+  }, null), /Bill đã thay đổi/);
+  assert.equal(state.records().filter((row) => row.collection === 'table_bill_items').length, 1);
+});
+
+test('public multi-item order rolls back completely when one item is invalid', () => {
+  const state = fixture();
+  assert.throws(() => state.act('public_order', {
+    tableId: 'table00000000001', billId: 'bill1',
+    items: [{ productId: 'product1', quantity: 1 }, { productId: 'missing', quantity: 1 }],
+  }, null));
+  assert.equal(state.records().filter((row) => row.collection === 'table_bill_items').length, 1);
+  assert.equal(events(state).length, 0);
+  assert.equal(state.records().find((row) => row.collection === 'table_bills').get('total_amount'), '');
 });
 
 for (const role of ['admin', 'staff']) {

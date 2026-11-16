@@ -162,6 +162,10 @@ export default function AdminProductsPage() {
   const [saving, setSaving] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
+  const [autoOpenSheetOpen, setAutoOpenSheetOpen] = useState(false);
+  const [autoOpenItems, setAutoOpenItems] = useState<{ productId: string; quantity: number }[]>([]);
+  const [autoOpenDraft, setAutoOpenDraft] = useState<Record<string, string>>({});
+  const [savingAutoOpen, setSavingAutoOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState<Product | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyForm);
@@ -183,12 +187,15 @@ export default function AdminProductsPage() {
       return;
     }
     try {
-      const [products, categoryItems] = await Promise.all([
+      const [products, categoryItems, autoOpen] = await Promise.all([
         productService.listAdmin(storeId),
         productCategoryService.list(storeId),
+        pb.send<{ items: { productId: string; quantity: number }[] }>("/api/table-billing/auto-open-products", { method: "GET" }),
       ]);
       setItems(products);
       setCategories(categorySort(categoryItems));
+      setAutoOpenItems(autoOpen.items || []);
+      setAutoOpenDraft(Object.fromEntries((autoOpen.items || []).map((item) => [item.productId, String(item.quantity)])));
     } catch (error) {
       openSnackbar({ text: errorMessage(error), type: "error" });
     } finally {
@@ -440,6 +447,22 @@ export default function AdminProductsPage() {
     setForm((current) => ({ ...current, [field]: { ...current[field], [key]: value } }));
   };
 
+  const saveAutoOpen = async () => {
+    setSavingAutoOpen(true);
+    try {
+      const payload = items.filter((product) => product.is_active && product.billing_unit !== "hour" && autoOpenDraft[product.id]).map((product) => ({ productId: product.id, quantity: Number(autoOpenDraft[product.id]) }));
+      const result = await pb.send<{ items: { productId: string; quantity: number }[] }>("/api/table-billing/auto-open-products", { method: "PATCH", body: { items: payload } });
+      setAutoOpenItems(result.items);
+      setAutoOpenDraft(Object.fromEntries(result.items.map((item) => [item.productId, String(item.quantity)])));
+      setAutoOpenSheetOpen(false);
+      openSnackbar({ text: "Đã lưu mặt hàng tự thêm khi mở bàn", type: "success" });
+    } catch (error) {
+      openSnackbar({ text: errorMessage(error), type: "error" });
+    } finally {
+      setSavingAutoOpen(false);
+    }
+  };
+
   return <Page className="min-h-screen bg-slate-50 pb-[calc(env(safe-area-inset-bottom,0px)+88px)]">
     <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-200 bg-white px-3 pb-3 pt-12 sm:gap-3 sm:px-4">
       <button aria-label="Quay lại sơ đồ bàn" title="Quay lại" onClick={() => navigate("/")} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700"><Icon icon="zi-arrow-left" /></button>
@@ -451,6 +474,7 @@ export default function AdminProductsPage() {
 
     <main className="mx-auto max-w-3xl space-y-3 px-4 py-4">
       <button type="button" onClick={() => navigate("/admin/inventory")} className="flex min-h-10 items-center gap-2 rounded-lg border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-800"><Icon icon="zi-inbox" />Quản lý tồn kho</button>
+      <button type="button" onClick={() => setAutoOpenSheetOpen(true)} className="flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"><Icon icon="zi-plus" />Mặt hàng tự thêm khi mở bàn <span className="text-slate-500">({autoOpenItems.length})</span></button>
       <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_190px]">
         <label className="relative block"><span className="sr-only">Tìm mặt hàng</span><Icon icon="zi-search" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm mặt hàng" className="min-h-11 w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-base text-slate-900 placeholder:text-slate-400" /></label>
         <label className="block"><span className="sr-only">Lọc theo danh mục</span><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800"><option value="">Tất cả danh mục</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
@@ -486,6 +510,15 @@ export default function AdminProductsPage() {
         </article>;
       })}</div>}
     </main>
+
+    <Sheet visible={autoOpenSheetOpen} onClose={() => setAutoOpenSheetOpen(false)} autoHeight swipeToClose>
+      <Box className="max-h-[85vh] space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4">
+        <div className="flex items-center justify-between"><Text.Title size="small">Mặt hàng tự thêm khi mở bàn</Text.Title><button aria-label="Đóng" onClick={() => setAutoOpenSheetOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100"><Icon icon="zi-close" /></button></div>
+        <Text size="xSmall" className="block text-slate-500">Chọn mặt hàng và số lượng mặc định. Chỉ hiển thị mặt hàng đang bán theo số lượng hoặc khối lượng.</Text>
+        <div className="divide-y divide-slate-200">{items.filter((product) => product.is_active && product.billing_unit !== "hour").map((product) => <label key={product.id} className="flex min-h-14 items-center gap-3 py-2"><input type="checkbox" checked={Boolean(autoOpenDraft[product.id])} onChange={(event) => setAutoOpenDraft((current) => { const next = { ...current }; if (event.target.checked) next[product.id] = "1"; else delete next[product.id]; return next; })} className="h-5 w-5 shrink-0 accent-emerald-700" /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-slate-900">{product.name}</span><span className="text-xs text-slate-500">{money(product.price)} / {product.unit_label || (product.billing_unit === "weight" ? "kg" : "lần")}</span></span>{Boolean(autoOpenDraft[product.id]) && <input aria-label={`Số lượng mặc định ${product.name}`} type="number" min="1" step="1" inputMode="numeric" value={autoOpenDraft[product.id]} onChange={(event) => setAutoOpenDraft((current) => ({ ...current, [product.id]: event.target.value }))} className="min-h-10 w-24 rounded-lg border border-slate-300 px-2 text-right text-base" />}</label>)}{items.every((product) => !product.is_active || product.billing_unit === "hour") && <p className="py-6 text-center text-sm text-slate-500">Chưa có mặt hàng phù hợp.</p>}</div>
+        <button disabled={savingAutoOpen} onClick={() => void saveAutoOpen()} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-60">{savingAutoOpen && <Spinner />}Lưu cấu hình</button>
+      </Box>
+    </Sheet>
 
     <Sheet visible={sheetOpen} onClose={() => setSheetOpen(false)} autoHeight swipeToClose>
       <Box className="max-h-[88vh] space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4">

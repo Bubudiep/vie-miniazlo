@@ -167,8 +167,8 @@ export const tableService = {
     return pb.send<{ ok: boolean }>('/api/table-billing/action', { method: 'POST', body: { action: 'configure_layout', ...layout } });
   },
 
-  async start(tableId: string, customerId = '') {
-    return pb.send<{ ok: boolean; billId: string }>('/api/table-billing/action', { method: 'POST', body: { action: 'start', tableId, customerId } });
+  async start(tableId: string, customerId = '', useDefaultProducts = true) {
+    return pb.send<{ ok: boolean; billId: string }>('/api/table-billing/action', { method: 'POST', body: { action: 'start', tableId, customerId, useDefaultProducts } });
   },
 
   async delete(id: string, password: string) {
@@ -187,8 +187,11 @@ export const tableService = {
 
 export const tableBillingService = {
   async getPublicDetail(tableId: string) {
-    const result = await pb.send<{ ok: boolean; storeName: string; tableName: string; payment: Pick<BillPaymentSettings, 'bankId' | 'accountNumber' | 'accountName'>; bill: TableBill | null }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_detail', tableId } });
+    const result = await pb.send<{ ok: boolean; storeName: string; tableName: string; payment: Pick<BillPaymentSettings, 'bankId' | 'accountNumber' | 'accountName'>; menu: TableBillProduct[]; bill: TableBill | null }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_detail', tableId } });
     return result;
+  },
+  async requestPublicOrder(tableId: string, billId: string, items: { productId: string; quantity: number }[]) {
+    return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_order', tableId, billId, items } });
   },
   async requestPublicTransfer(tableId: string, billId: string) {
     return pb.send<{ ok: boolean; alreadyRequested: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_request_transfer', tableId, billId } });

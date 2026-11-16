@@ -15,10 +15,10 @@ const dateTime = (value: string) => value ? formatVietnamDateTime(value) : "";
 
 export default function StaffQueuePage() {
   const { user } = useAuth();
-  const { revision, historyUnread, paymentUnread, markPaymentRead, markHistoryRead } = useStaffQueue();
+  const { revision, historyUnread, paymentUnread, requestUnread, markRequestsRead, markPaymentRead, markHistoryRead } = useStaffQueue();
   const navigate = useNavigate();
   const { openSnackbar } = useSnackbar();
-  const [view, setView] = useState<"queue" | "requests" | "payments" | "history">("queue");
+  const [view, setView] = useState<"queue" | "requests" | "payments" | "history">("requests");
   const [items, setItems] = useState<StaffQueueItem[]>([]);
   const [requestCount, setRequestCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -41,6 +41,7 @@ export default function StaffQueuePage() {
   };
 
   useEffect(() => { if (canUse) void load(); }, [canUse, view, revision, user?.id, user?.store]);
+  useEffect(() => { if (view === "requests") markRequestsRead(); }, [view, revision]);
 
   if (!canUse) return <Navigate to="/" replace />;
 
