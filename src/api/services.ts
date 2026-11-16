@@ -186,9 +186,12 @@ export const tableService = {
 };
 
 export const tableBillingService = {
-  async getPublicDetail(billId: string) {
-    const result = await pb.send<{ ok: boolean; storeName: string; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_detail', billId } });
+  async getPublicDetail(tableId: string) {
+    const result = await pb.send<{ ok: boolean; storeName: string; tableName: string; payment: Pick<BillPaymentSettings, 'bankId' | 'accountNumber' | 'accountName'>; bill: TableBill | null }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_detail', tableId } });
     return result;
+  },
+  async requestPublicTransfer(tableId: string, billId: string) {
+    return pb.send<{ ok: boolean; alreadyRequested: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_request_transfer', tableId, billId } });
   },
   async getQueue(history = false) {
     return pb.send<{ items: StaffQueueItem[] }>('/api/table-billing/action', { method: 'POST', body: { action: 'queue_list', history } });
@@ -196,8 +199,14 @@ export const tableBillingService = {
   async getOrderRequests(history = false) {
     return pb.send<{ items: StaffQueueItem[] }>('/api/table-billing/action', { method: 'POST', body: { action: 'request_list', history } });
   },
-  async updateOrderRequest(billId: string, itemId: string, approve: boolean) {
-    return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: approve ? 'request_approve' : 'request_reject', billId, itemId } });
+  async getPaymentRequests() {
+    return pb.send<{ items: StaffQueueItem[] }>('/api/table-billing/action', { method: 'POST', body: { action: 'payment_request_list' } });
+  },
+  async markTransferUnreceived(billId: string) {
+    return pb.send<{ ok: boolean }>('/api/table-billing/action', { method: 'POST', body: { action: 'payment_request_unreceived', billId } });
+  },
+  async updateOrderRequest(billId: string, itemIds: string[], approve: boolean) {
+    return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: approve ? 'request_approve' : 'request_reject', billId, itemIds } });
   },
   async updateQueue(billId: string, itemId: string, action: 'queue_done' | 'queue_cancel') {
     return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action, billId, itemId } });

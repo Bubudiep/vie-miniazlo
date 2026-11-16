@@ -51,7 +51,7 @@ function AppRoutes() {
     <>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/public-bills/:billId" element={<PublicBillPage />} />
+        <Route path="/public-tables/:tableId" element={<PublicBillPage />} />
         <Route
           path="/"
           element={<Navigate to="/home" replace />}

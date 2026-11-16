@@ -61,7 +61,7 @@ const TabBar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { historyUnread } = useStaffQueue();
+  const { historyUnread, paymentUnread } = useStaffQueue();
   const queueTab = {
     path: "/staff/queue",
     label: "Hàng chờ",
@@ -96,7 +96,7 @@ const TabBar = () => {
     navigate(path);
   };
 
-  if (location.pathname === "/cart" || location.pathname === "/login" || location.pathname.startsWith("/public-bills/")) return null;
+  if (location.pathname === "/cart" || location.pathname === "/login" || location.pathname.startsWith("/public-tables/")) return null;
 
   const slotWidth = 100 / tabs.length;
   const pillWidth = isStretching ? PILL_STRETCH_WIDTH : PILL_REST_WIDTH;
@@ -125,7 +125,7 @@ const TabBar = () => {
           />
           {tabs.map((tab, index) => {
             const active = index === activeIndex;
-            const unread = tab.path === "/staff/queue" && historyUnread;
+            const unread = tab.path === "/staff/queue" && (historyUnread || paymentUnread);
             return (
               <button
                 key={tab.path}
@@ -146,7 +146,7 @@ const TabBar = () => {
                   {active && tab.activeIcon ? tab.activeIcon : tab.icon}
                   {unread && <span aria-hidden="true" className="absolute right-0 top-0 h-2 w-2 rounded-full bg-rose-600 ring-2 ring-white" />}
                 </div>
-                {tab.path === "/staff/queue" && <span className={`text-[10px] font-semibold leading-none ${active ? "text-white" : "text-slate-500"}`}>Hàng chờ</span>}
+                {!active && <span className="text-[10px] font-semibold leading-none text-slate-500 dark:text-slate-400">{tab.label}</span>}
               </button>
             );
           })}

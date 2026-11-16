@@ -8,16 +8,17 @@ import StoreHeader from "@/components/store-header";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStaffQueue } from "@/contexts/StaffQueueContext";
 import { formatVietnamDateTime } from "@/utils/format";
+import { groupOrderRequests, type StaffQueueGroup } from "@/utils/staff-queue";
 
 const messageOf = (error: any) => error?.response?.data?.error || error?.response?.message || error?.message || "Không thể cập nhật hàng chờ";
 const dateTime = (value: string) => value ? formatVietnamDateTime(value) : "";
 
 export default function StaffQueuePage() {
   const { user } = useAuth();
-  const { revision, historyUnread, markHistoryRead } = useStaffQueue();
+  const { revision, historyUnread, paymentUnread, markPaymentRead, markHistoryRead } = useStaffQueue();
   const navigate = useNavigate();
   const { openSnackbar } = useSnackbar();
-  const [view, setView] = useState<"requests" | "queue" | "history">("queue");
+  const [view, setView] = useState<"queue" | "requests" | "payments" | "history">("queue");
   const [items, setItems] = useState<StaffQueueItem[]>([]);
   const [requestCount, setRequestCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -29,11 +30,11 @@ export default function StaffQueuePage() {
     setLoading(true);
     try {
       const [current, requests] = await Promise.all([
-        view === "requests" ? tableBillingService.getOrderRequests() : tableBillingService.getQueue(view === "history"),
-        view === "requests" ? Promise.resolve(null) : tableBillingService.getOrderRequests(),
+        view === "requests" ? tableBillingService.getOrderRequests() : view === "payments" ? tableBillingService.getPaymentRequests() : tableBillingService.getQueue(view === "history"),
+        view === "requests" || view === "payments" ? Promise.resolve(null) : tableBillingService.getOrderRequests(),
       ]);
       setItems(current.items);
-      setRequestCount(requests?.items.length ?? current.items.length);
+      setRequestCount(groupOrderRequests(requests?.items ?? current.items).length);
     }
     catch (error) { openSnackbar({ text: messageOf(error), type: "error", position: "top" }); }
     finally { setLoading(false); }
@@ -65,12 +66,25 @@ export default function StaffQueuePage() {
     finally { setBusyId(""); }
   };
 
-  const decideRequest = async (item: StaffQueueItem, approve: boolean) => {
+  const decideRequest = async (group: StaffQueueGroup, approve: boolean) => {
+    const item = group.items[0];
+    const itemIds = group.items.map((line) => line.id);
+    setBusyId(group.id);
+    try {
+      await tableBillingService.updateOrderRequest(item.billId, itemIds, approve);
+      setItems((current) => current.filter((line) => !itemIds.includes(line.id)));
+      openSnackbar({ text: approve ? "Đã duyệt yêu cầu món" : "Đã từ chối yêu cầu món", type: "success", position: "top" });
+    } catch (error) { openSnackbar({ text: messageOf(error), type: "error", position: "top" }); void load(); }
+    finally { setBusyId(""); }
+  };
+
+  const decidePayment = async (item: StaffQueueItem, received: boolean) => {
     setBusyId(item.id);
     try {
-      await tableBillingService.updateOrderRequest(item.billId, item.id, approve);
+      if (received) await tableBillingService.payManual(item.billId, "transfer");
+      else await tableBillingService.markTransferUnreceived(item.billId);
       setItems((current) => current.filter((line) => line.id !== item.id));
-      openSnackbar({ text: approve ? "Đã duyệt yêu cầu món" : "Đã từ chối yêu cầu món", type: "success", position: "top" });
+      openSnackbar({ text: received ? "Đã xác nhận thanh toán hóa đơn" : "Đã ghi nhận chưa nhận được tiền; bill vẫn chưa thanh toán", type: "success", position: "top" });
     } catch (error) { openSnackbar({ text: messageOf(error), type: "error", position: "top" }); void load(); }
     finally { setBusyId(""); }
   };
@@ -82,18 +96,28 @@ export default function StaffQueuePage() {
         <button aria-label="Quay lại" title="Quay lại" onClick={() => navigate(-1)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-slate-700 shadow-sm"><Icon icon="zi-arrow-left" /></button>
         <Text.Title size="small" className="min-w-0 flex-1 text-slate-900">Hàng chờ</Text.Title>
       </header>
-      <div role="tablist" aria-label="Danh sách món" className="grid grid-cols-3 rounded-lg border border-slate-200 bg-white p-1">
-        {([["queue", "Chế biến"], ["requests", "Yêu cầu món"], ["history", "Lịch sử"]] as const).map(([key, label]) => <button key={key} role="tab" aria-label={key === "requests" && requestCount > 0 ? `${label}, ${requestCount} đơn chờ` : key === "history" && historyUnread ? `${label}, có cập nhật mới` : label} aria-selected={view === key} onClick={() => { setView(key); if (key === "history") markHistoryRead(); }} className={`relative min-h-11 rounded-md px-2 text-xs font-semibold ${view === key ? "bg-emerald-700 text-white" : "text-slate-600"}`}>
-          {label}{key === "requests" && requestCount > 0 && <span aria-hidden="true" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-600 ring-2 ring-white" />}{key === "history" && historyUnread && <span aria-hidden="true" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-600 ring-2 ring-white" />}
+      <div role="tablist" aria-label="Hàng chờ" className="grid grid-cols-4 rounded-lg border border-slate-200 bg-white p-1">
+        {([["queue", "Chế biến"], ["requests", "Yêu cầu món"], ["payments", "Thanh toán"], ["history", "Lịch sử"]] as const).map(([key, label]) => <button key={key} role="tab" aria-label={key === "requests" && requestCount > 0 ? `${label}, ${requestCount} đơn chờ` : key === "payments" && paymentUnread ? `${label}, có yêu cầu mới` : key === "history" && historyUnread ? `${label}, có cập nhật mới` : label} aria-selected={view === key} onClick={() => { setView(key); if (key === "payments") markPaymentRead(); if (key === "history") markHistoryRead(); }} className={`relative min-h-11 rounded-md px-1 text-xs font-semibold ${view === key ? "bg-emerald-700 text-white" : "text-slate-600"}`}>
+          {label}{key === "requests" && requestCount > 0 && <span aria-hidden="true" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-600 ring-2 ring-white" />}{key === "payments" && paymentUnread && <span aria-hidden="true" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-600 ring-2 ring-white" />}{key === "history" && historyUnread && <span aria-hidden="true" className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-600 ring-2 ring-white" />}
         </button>)}
       </div>
-      {loading ? <div className="flex justify-center py-12"><Spinner /></div> : items.length === 0 ? <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-12 text-center text-sm text-slate-500">{view === "requests" ? "Chưa có yêu cầu món." : view === "history" ? "Chưa có lịch sử thao tác." : "Hiện chưa có món đang chờ."}</div> : <div className="space-y-3">
+      {loading ? <div className="flex justify-center py-12"><Spinner /></div> : items.length === 0 ? <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-12 text-center text-sm text-slate-500">{view === "requests" ? "Chưa có yêu cầu món." : view === "payments" ? "Chưa có yêu cầu xác nhận thanh toán." : view === "history" ? "Chưa có lịch sử thao tác." : "Hiện chưa có món đang chờ."}</div> : view === "requests" ? <div className="space-y-3">
+        {groupOrderRequests(items).map((group) => {
+          const item = group.items[0];
+          return <article key={group.id} className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex min-w-0 items-start justify-between gap-3"><Text size="small" className="min-w-0 flex-1 break-words font-semibold text-slate-900">{item.tableName}</Text><Text size="xSmall" className="shrink-0 text-right text-slate-500">{dateTime(item.queuedAt)}</Text></div>
+            <div className="divide-y divide-slate-100 border-y border-slate-100">{group.items.map((line) => <div key={line.id} className="flex min-w-0 items-start justify-between gap-3 py-2"><Text size="small" className="min-w-0 flex-1 break-words text-slate-900">{line.name}</Text><Text size="xSmall" className="shrink-0 text-right text-slate-600">{line.quantity.toLocaleString("vi-VN")} {line.unitLabel}</Text></div>)}</div>
+            <Text size="xSmall" className="block text-slate-500">Khách: {item.actorName}</Text>
+            <div className="grid grid-cols-2 gap-2"><button disabled={busyId === group.id || group.items.some((line) => line.billStatus !== "open")} onClick={() => void decideRequest(group, true)} className="min-h-11 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">Duyệt</button><button disabled={busyId === group.id || group.items.some((line) => line.billStatus !== "open")} onClick={() => void decideRequest(group, false)} className="min-h-11 rounded-md border border-rose-300 bg-white px-3 text-sm font-semibold text-rose-700 disabled:opacity-50">Từ chối</button></div>
+          </article>;
+        })}
+      </div> : <div className="space-y-3">
         {items.map((item) => <article key={item.id} className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
           <div className="flex min-w-0 items-start justify-between gap-3">
-            <div className="min-w-0 flex-1"><Text size="small" className="break-words font-semibold text-slate-900">{item.name}</Text><Text size="xSmall" className="mt-1 block text-slate-600">{item.quantity.toLocaleString("vi-VN")} {item.unitLabel} · {item.tableName}</Text></div>
+            <div className="min-w-0 flex-1"><Text size="small" className="break-words font-semibold text-slate-900">{item.name}</Text><Text size="xSmall" className="mt-1 block text-slate-600">{view === "payments" ? `${(item.amount || 0).toLocaleString("vi-VN")}đ · ${item.tableName}` : `${item.quantity.toLocaleString("vi-VN")} ${item.unitLabel} · ${item.tableName}`}</Text></div>
             <Text size="xSmall" className="shrink-0 text-right text-slate-500">{dateTime(view === "history" ? item.completedAt : item.queuedAt)}</Text>
           </div>
-          {view === "requests" ? <><Text size="xSmall" className="block text-slate-500">Khách: {item.actorName}</Text><div className="grid grid-cols-2 gap-2"><button disabled={busyId === item.id || item.billStatus !== "open"} onClick={() => void decideRequest(item, true)} className="min-h-11 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">Duyệt</button><button disabled={busyId === item.id || item.billStatus !== "open"} onClick={() => void decideRequest(item, false)} className="min-h-11 rounded-md border border-rose-300 bg-white px-3 text-sm font-semibold text-rose-700 disabled:opacity-50">Từ chối</button></div></> : view === "history" ? <Text size="xSmall" className="block text-slate-500">{item.actionLabel || "Đã xử lý"}{item.actorName ? ` bởi ${item.actorName}` : ""}</Text> : <div className="grid grid-cols-2 gap-2">
+          {view === "payments" ? <><Text size="xSmall" className="block text-slate-500">{item.actorName}</Text><div className="grid grid-cols-2 gap-2"><button disabled={busyId === item.id} onClick={() => void decidePayment(item, true)} className="min-h-11 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{busyId === item.id ? "Đang xử lý..." : "Đã nhận tiền"}</button><button disabled={busyId === item.id} onClick={() => void decidePayment(item, false)} className="min-h-11 rounded-md border border-rose-300 bg-white px-3 text-sm font-semibold text-rose-700 disabled:opacity-50">Chưa nhận</button></div></> : view === "history" ? <Text size="xSmall" className="block text-slate-500">{item.actionLabel || "Đã xử lý"}{item.actorName ? ` bởi ${item.actorName}` : ""}</Text> : <div className="grid grid-cols-2 gap-2">
             <button disabled={busyId === item.id || item.billStatus !== "open"} onClick={() => void complete(item)} className="flex min-h-11 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{busyId === item.id ? <Spinner /> : <Icon icon="zi-check" />}Đã xong</button>
             <button disabled={busyId === item.id || item.billStatus !== "open"} onClick={() => setCancelItem(item)} className="flex min-h-11 items-center justify-center gap-2 rounded-md border border-rose-300 bg-white px-3 text-sm font-semibold text-rose-700 disabled:opacity-50"><Icon icon="zi-close" />Hủy</button>
           </div>}

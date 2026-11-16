@@ -172,6 +172,7 @@ export interface StaffQueueItem {
   tableName: string;
   name: string;
   quantity: number;
+  amount?: number;
   unitLabel: string;
   queuedAt: string;
   completedAt: string;

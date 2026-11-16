@@ -19,11 +19,12 @@ class Record {
 }
 
 // Run the real route with an in-memory transactional store; no live data is used.
-function fixture(role = 'staff', { bill = {}, item = {}, failHistory = false } = {}) {
+function fixture(role = 'staff', { bill = {}, item = {}, extraItems = [], failHistory = false } = {}) {
   let records = [
-    new Record('table_bills', 'bill1', { store: 'store1', table: 'table1', customer: 'actor1', status: 'open', ...bill }),
+    new Record('table_bills', 'bill1', { store: 'store1', table: 'table00000000001', customer: 'actor1', status: 'open', ...bill }),
     new Record('table_bill_items', 'item1', { store: 'store1', bill: 'bill1', product_name: 'Nước suối', billing_unit: 'quantity', quantity: 2, unit_price: 10000, line_total: 20000, ...item }),
-    new Record('tables', 'table1', { store: 'store1', name: 'Bàn 1' }),
+    new Record('tables', 'table00000000001', { store: 'store1', name: 'Bàn 1' }),
+    ...extraItems.map(({ id, ...fields }) => new Record('table_bill_items', id, { store: 'store1', bill: 'bill1', product_name: 'Coca', billing_unit: 'quantity', quantity: 1, unit_price: 10000, line_total: 10000, ...fields })),
   ];
   const auth = new Record('users', 'actor1', { store: 'store1', role, fullname: 'Nguyễn Văn An' });
   const hooks = new Map();
@@ -88,9 +89,9 @@ function fixture(role = 'staff', { bill = {}, item = {}, failHistory = false } =
   });
   return {
     records: () => records,
-    act(action, input = {}) {
+    act(action, input = {}, requestAuth = auth) {
       return routes.get('POST /api/table-billing/action')({
-        requestInfo: () => ({ auth, body: { action, billId: 'bill1', itemId: 'item1', ...input } }),
+        requestInfo: () => ({ auth: requestAuth, body: { action, billId: 'bill1', itemId: 'item1', ...input } }),
         json: (status, body) => ({ status, body }),
       });
     },
@@ -141,6 +142,53 @@ test('admin can delete directly without a reason and still gets history', () => 
   assert.equal(state.act('delete_item').status, 200);
   assert.equal(events(state)[0].get('actor_role'), 'admin');
   assert.equal(details(state).reason, '');
+});
+
+test('staff marking a transfer as unreceived keeps the bill unpaid and clears its pending request', () => {
+  const state = fixture('staff', { bill: { status: 'wallet_pending', payment_method: 'transfer', wallet_requested_at: '2026-11-16T00:00:00.000Z', payment_requester: '', requested_amount: 20000, total_amount: 20000 } });
+  const result = state.act('payment_request_unreceived');
+  const bill = state.records().find((row) => row.collection === 'table_bills');
+  assert.equal(result.status, 200);
+  assert.equal(bill.get('status'), 'stopped');
+  assert.notEqual(bill.get('status'), 'paid');
+  assert.equal(bill.get('payment_method'), '');
+  assert.equal(bill.get('wallet_requested_at'), '');
+  assert.equal(bill.get('requested_amount'), 0);
+  assert.match(bill.get('payment_error'), /Chưa nhận được tiền/);
+  assert.equal(events(state)[0].get('event_type'), 'payment_failed');
+});
+
+test('public bill link can request transfer without login and freezes the payable amount for review', () => {
+  const state = fixture('staff');
+  assert.throws(() => state.act('public_request_transfer', { tableId: 'table00000000001', billId: 'stale-bill-id' }, null), /Bill đã thay đổi/);
+  assert.equal(state.records().find((row) => row.collection === 'table_bills').get('status'), 'open');
+  const result = state.act('public_request_transfer', { tableId: 'table00000000001' }, null);
+  const bill = state.records().find((row) => row.collection === 'table_bills');
+  assert.equal(result.status, 200);
+  assert.equal(bill.get('status'), 'wallet_pending');
+  assert.equal(bill.get('payment_method'), 'transfer');
+  assert.equal(bill.get('requested_amount'), 20000);
+  assert.ok(bill.get('wallet_requested_at'));
+  assert.equal(events(state)[0].get('event_type'), 'payment_requested');
+  assert.equal(events(state)[0].get('actor_role'), '');
+});
+
+test('public table link resolves its current bill by table id without login', () => {
+  const state = fixture('staff');
+  const result = state.act('public_detail', { tableId: 'table00000000001' }, null);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.tableName, 'Bàn 1');
+  assert.equal(result.body.bill.id, 'bill1');
+});
+
+test('public table link shows the latest paid bill and an empty bill slot when no bill exists', () => {
+  const paid = fixture('staff', { bill: { status: 'paid' } });
+  assert.equal(paid.act('public_detail', { tableId: 'table00000000001' }, null).body.bill.status, 'paid');
+  const empty = fixture('staff');
+  empty.records().splice(0, 1);
+  const result = empty.act('public_detail', { tableId: 'table00000000001' }, null);
+  assert.equal(result.body.bill, null);
+  assert.equal(result.body.tableName, 'Bàn 1');
 });
 
 for (const role of ['admin', 'staff']) {
@@ -254,4 +302,19 @@ test('queue completion updates a pending item and records one history event', ()
   assert.equal(events(state).length, 1);
   assert.equal(events(state)[0].get('event_type'), 'queue_completed');
   assert.equal(state.records().find((row) => row.collection === 'staff_queue_signals').get('revision'), 1);
+});
+
+test('staff approves every item in one order request atomically', () => {
+  const state = fixture('staff', { item: { queue_status: 'approval_pending' }, extraItems: [{ id: 'item2', queue_status: 'approval_pending' }] });
+  const result = state.act('request_approve', { itemIds: ['item1', 'item2'] });
+  assert.equal(result.status, 200);
+  assert.deepEqual(state.records().filter((row) => row.collection === 'table_bill_items').map((row) => row.get('queue_status')), ['pending', 'pending']);
+  assert.equal(events(state).length, 2);
+});
+
+test('group approval rolls back when one requested item is invalid', () => {
+  const state = fixture('staff', { item: { queue_status: 'approval_pending' }, extraItems: [{ id: 'item2', queue_status: 'done' }] });
+  assert.throws(() => state.act('request_approve', { itemIds: ['item1', 'item2'] }), /đã được xử lý/);
+  assert.equal(state.records().find((row) => row.id === 'item1').get('queue_status'), 'approval_pending');
+  assert.equal(events(state).length, 0);
 });
