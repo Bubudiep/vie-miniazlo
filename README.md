@@ -32,6 +32,16 @@ PB_URL=http://127.0.0.1:8390
 
 Reverse proxy hoặc Cloudflare Tunnel chỉ cần trỏ `h2.chamcongchua.com` tới server web port `3300`.
 
+### In bill trực tiếp trên Windows
+
+Trên máy quầy có cài Google Chrome, mở `scripts/start-kiosk-print.cmd` để chạy ứng dụng với chế độ in kiosk. Nút **In bill** sẽ gửi lệnh tới máy in mặc định mà không mở hộp thoại preview. Đăng nhập được lưu trong profile Chrome riêng `H2Billiards\ChromeProfile`.
+
+Nếu dùng địa chỉ ứng dụng khác, truyền URL khi chạy script:
+
+```powershell
+.\scripts\start-kiosk-print.ps1 "https://ten-mien-cua-ban"
+```
+
 ## Đăng ký và phê duyệt
 
 Người dùng chọn cửa hàng, nhập họ tên (`fullname`), số điện thoại và mật khẩu để tự đăng ký. Mặc định tài khoản được duyệt ngay nên có thể đăng nhập sau khi đăng ký. Admin cửa hàng có thể mở **Tài khoản → Duyệt tài khoản** để bật yêu cầu phê duyệt cho người đăng ký *mới* vào cửa hàng mình, xem danh sách chờ và duyệt từng người. Bật chế độ này không thu hồi quyền đăng nhập của tài khoản đã được duyệt trước đó. Tài khoản cũ có thể chưa có họ tên hoặc số điện thoại; superuser có thể bổ sung trong PocketBase Admin UI.
