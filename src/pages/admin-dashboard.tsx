@@ -8,9 +8,9 @@ import type { AdminDashboardReport } from "@/api/pocketbase";
 import AdminNav from "@/components/admin-nav";
 import StoreHeader from "@/components/store-header";
 import { useAuth } from "@/contexts/AuthContext";
-import { formatMoneyInput, fromVietnamDateTimeInput, handleMoneyInput, toVietnamDateTimeInput } from "@/utils/format";
+import { formatMoneyInput, formatVietnamDate, formatVietnamDateTime, fromVietnamDateTimeInput, handleMoneyInput, toVietnamDateTimeInput } from "@/utils/format";
 
-const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date());
 const localNow = () => toVietnamDateTimeInput(new Date().toISOString());
 const startOfToday = () => `${today()}T00:00`;
 const updateDateTimePart = (value: string, part: "date" | "time", current: string) => part === "date"
@@ -20,13 +20,19 @@ const money = (value: number) => `${Math.round(Number(value || 0)).toLocaleStrin
 const messageOf = (error: any) => error?.response?.message || error?.response?.data?.error || error?.message || "Không thể tải Dashboard";
 
 export default function AdminDashboardPage() {
-  const { user } = useAuth();
+  const { user, storeId } = useAuth();
   const navigate = useNavigate();
   const { openSnackbar } = useSnackbar();
   const openSnackbarRef = useRef(openSnackbar);
   openSnackbarRef.current = openSnackbar;
-  const [from, setFrom] = useState(startOfToday());
-  const [to, setTo] = useState(localNow());
+  const [from, setFrom] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`billiard:admin-dashboard-range:${storeId}`) || "null")?.from || startOfToday(); }
+    catch { return startOfToday(); }
+  });
+  const [to, setTo] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`billiard:admin-dashboard-range:${storeId}`) || "null")?.to || localNow(); }
+    catch { return localNow(); }
+  });
   const [report, setReport] = useState<AdminDashboardReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [expenseOpen, setExpenseOpen] = useState(false);
@@ -35,6 +41,11 @@ export default function AdminDashboardPage() {
   const [category, setCategory] = useState("");
   const [note, setNote] = useState("");
   const [spentAt, setSpentAt] = useState(localNow());
+
+  useEffect(() => {
+    try { localStorage.setItem(`billiard:admin-dashboard-range:${storeId}`, JSON.stringify({ from, to })); }
+    catch { /* Keep the filter usable when browser storage is unavailable. */ }
+  }, [from, to, storeId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,7 +58,9 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     if (user?.role !== "admin") { navigate("/", { replace: true }); return; }
     void load();
-  }, [user?.role, navigate, load]);
+    // Load on entry; date edits are applied only when the form is submitted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.role, navigate]);
 
   const saveExpense = async (event: FormEvent) => {
     event.preventDefault();
@@ -112,9 +125,9 @@ export default function AdminDashboardPage() {
         </section>
 
         <section className="grid gap-5 lg:grid-cols-2">
-          <div className="space-y-2"><Text.Title size="small" className="text-slate-900">Kết quả theo ngày</Text.Title>{report.daily.length ? <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">{report.daily.map((day) => <article key={day.date} className="grid grid-cols-2 gap-2 p-3"><Text size="small" className="font-semibold">{new Date(`${day.date}T12:00:00+07:00`).toLocaleDateString("vi-VN")}</Text><Text size="small" className={`text-right font-bold ${day.profit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{money(day.profit)}</Text><Text size="xSmall" className="text-slate-500">Thu {money(day.revenue)} · Chi {money(day.productCost + day.expenses)}</Text><Text size="xSmall" className="text-right text-slate-500">Lợi nhuận</Text></article>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Chưa có dữ liệu trong kỳ.</div>}</div>
+          <div className="space-y-2"><Text.Title size="small" className="text-slate-900">Kết quả theo ngày</Text.Title>{report.daily.length ? <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">{report.daily.map((day) => <article key={day.date} className="grid grid-cols-2 gap-2 p-3"><Text size="small" className="font-semibold">{formatVietnamDate(`${day.date}T12:00:00+07:00`)}</Text><Text size="small" className={`text-right font-bold ${day.profit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{money(day.profit)}</Text><Text size="xSmall" className="text-slate-500">Thu {money(day.revenue)} · Chi {money(day.productCost + day.expenses)}</Text><Text size="xSmall" className="text-right text-slate-500">Lợi nhuận</Text></article>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Chưa có dữ liệu trong kỳ.</div>}</div>
           <div className="space-y-2"><Text.Title size="small" className="text-slate-900">Kết quả theo giờ</Text.Title>{report.hourly.length ? <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">{report.hourly.map((hour) => <article key={hour.hour} className="grid grid-cols-2 gap-2 p-3"><Text size="small" className="font-semibold">{new Date(hour.hour).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</Text><Text size="small" className={`text-right font-bold ${hour.profit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{money(hour.profit)}</Text><Text size="xSmall" className="text-slate-500">Thu {money(hour.revenue)} · Chi {money(hour.productCost + hour.expenses)}</Text><Text size="xSmall" className="text-right text-slate-500">Lợi nhuận</Text></article>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Chưa có dữ liệu trong kỳ.</div>}</div>
-          <div className="space-y-2"><div className="flex items-center justify-between gap-2"><Text.Title size="small" className="text-slate-900">Chi phí khác</Text.Title><Text size="xSmall" className="font-semibold text-rose-700">{money(summary?.otherExpenses || 0)}</Text></div>{report.expenses.length ? <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">{report.expenses.map((expense) => <article key={expense.id} className="flex items-start justify-between gap-3 p-3"><div className="min-w-0"><Text size="small" className="font-semibold text-slate-900">{expense.category}</Text><Text size="xSmall" className="mt-1 block break-words text-slate-500">{expense.note || new Date(expense.spentAt).toLocaleDateString("vi-VN")}</Text></div><Text size="small" className="shrink-0 font-semibold text-rose-700">{money(expense.amount)}</Text></article>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Chưa có khoản chi khác.</div>}</div>
+          <div className="space-y-2"><div className="flex items-center justify-between gap-2"><Text.Title size="small" className="text-slate-900">Chi phí khác</Text.Title><Text size="xSmall" className="font-semibold text-rose-700">{money(summary?.otherExpenses || 0)}</Text></div>{report.expenses.length ? <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">{report.expenses.map((expense) => <article key={expense.id} className="flex items-start justify-between gap-3 p-3"><div className="min-w-0"><Text size="small" className="font-semibold text-slate-900">{expense.category}</Text><Text size="xSmall" className="mt-1 block break-words text-slate-500">{expense.note || formatVietnamDate(expense.spentAt)}</Text></div><Text size="small" className="shrink-0 font-semibold text-rose-700">{money(expense.amount)}</Text></article>)}</div> : <div className="rounded-lg border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">Chưa có khoản chi khác.</div>}</div>
         </section>
       </>}
     </main>

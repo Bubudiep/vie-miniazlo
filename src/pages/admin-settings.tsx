@@ -15,7 +15,7 @@ export default function AdminSettingsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   if (user?.role !== "admin") return <Navigate to="/" replace />;
-  return <Page className="min-h-screen bg-slate-50 pb-[calc(env(safe-area-inset-bottom,0px)+32px)]">
+  return <Page className="min-h-screen bg-slate-50 pb-[calc(env(safe-area-inset-bottom,0px)+88px)]">
     <StoreHeader />
     <AdminNav />
     <main className="mx-auto w-full max-w-3xl space-y-5 px-4 py-4">

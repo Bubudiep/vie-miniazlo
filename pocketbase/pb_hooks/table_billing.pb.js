@@ -564,13 +564,19 @@ routerAdd("PATCH", "/api/table-billing/auto-open-products", (c) => {
   const input = info.body || {};
   if (!Array.isArray(input.items) || input.items.length > 100) throw new BadRequestError("Danh sách mặt hàng tự thêm không hợp lệ");
   const seen = {};
+  let hasHourlyProduct = false;
   const items = input.items.map((item) => {
     const productId = String(item.productId || "");
     const quantity = Number(item.quantity);
     if (!productId || seen[productId] || !Number.isFinite(quantity) || quantity <= 0 || quantity > 10000) throw new BadRequestError("Mặt hàng hoặc số lượng mặc định không hợp lệ");
     seen[productId] = true;
     const product = $app.findRecordById("products", productId);
-    if (product.get("store") !== store || product.get("is_active") !== true || product.get("billing_unit") === "hour") throw new BadRequestError("Chỉ chọn mặt hàng đang bán theo số lượng hoặc khối lượng của cửa hàng");
+    if (product.get("store") !== store || product.get("is_active") !== true) throw new BadRequestError("Chỉ chọn mặt hàng đang bán tại cửa hàng");
+    if (product.get("billing_unit") === "hour") {
+      if (hasHourlyProduct) throw new BadRequestError("Chỉ được chọn một mặt hàng tính theo giờ");
+      hasHourlyProduct = true;
+      return { productId, quantity: 1 };
+    }
     if (product.get("billing_unit") === "quantity" && !Number.isInteger(quantity)) throw new BadRequestError("Số lượng mặt hàng phải là số nguyên");
     return { productId, quantity };
   });
@@ -2512,9 +2518,11 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
         let product;
         try { product = txApp.findRecordById("products", String(configured.productId || "")); } catch (e) { return; }
         const unit = String(product.get("billing_unit") || "quantity");
-        if (product.get("store") !== store || product.get("is_active") !== true || unit === "hour") return;
+        if (product.get("store") !== store || product.get("is_active") !== true) return;
+        if (unit === "hour" && billItems(txApp, bill.id).some((existing) => existing.get("billing_unit") === "hour")) return;
         if (unit === "quantity" && !Number.isInteger(quantity)) return;
-        if (!approvalRequired && product.get("kind") !== "service") ensureProductAvailable(txApp, product.id, quantity);
+        const itemQuantity = unit === "hour" ? 1 : quantity;
+        if (unit !== "hour" && !approvalRequired && product.get("kind") !== "service") ensureProductAvailable(txApp, product.id, quantity);
         const price = Number(product.get("price"));
         if (!Number.isInteger(price) || price < 0) throw new BadRequestError("Giá mặt hàng phải là số nguyên không âm");
         const item = new Record(txApp.findCollectionByNameOrId("table_bill_items"));
@@ -2527,8 +2535,9 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
         item.set("unit_label", product.get("unit_label") || (unit === "weight" ? "kg" : "lần"));
         item.set("unit_price", price);
         item.set("purchase_price", Math.max(0, Math.round(Number(product.get("purchase_price")) || 0)));
-        item.set("quantity", quantity);
-        item.set("started_at", "");
+        if (unit === "hour") item.set("time_pricing", normalizeTimePricing(product.getString("time_pricing"), true));
+        item.set("quantity", itemQuantity);
+        item.set("started_at", unit === "hour" && !approvalRequired ? openedAt : "");
         item.set("paused_seconds_at_start", 0);
         item.set("line_total", approvalRequired ? 0 : Math.round(price * quantity));
         item.set("queue_status", approvalRequired ? "approval_pending" : "pending");

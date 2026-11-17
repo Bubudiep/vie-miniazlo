@@ -340,7 +340,8 @@ export interface InventoryItem {
   onHand: number;
   reserved: number;
   available: number;
-  output30Days: number;
+  output10Days: number;
+  outputDays10: number;
 }
 
 export interface InventoryMovement {

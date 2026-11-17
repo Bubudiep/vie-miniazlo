@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon, Page, Spinner, Text, useSnackbar } from "zmp-ui";
 import { useNavigate } from "react-router-dom";
 import { strToU8, zipSync } from "fflate";
@@ -49,11 +49,19 @@ function messageOf(error: any) {
 }
 
 export default function AdminReportsPage() {
-  const { user } = useAuth();
+  const { user, storeId } = useAuth();
   const navigate = useNavigate();
   const { openSnackbar } = useSnackbar();
-  const [from, setFrom] = useState(`${today()}T00:00`);
-  const [to, setTo] = useState(localNow());
+  const openSnackbarRef = useRef(openSnackbar);
+  openSnackbarRef.current = openSnackbar;
+  const [from, setFrom] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`billiard:admin-reports-range:${storeId}`) || "null")?.from || `${today()}T00:00`; }
+    catch { return `${today()}T00:00`; }
+  });
+  const [to, setTo] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`billiard:admin-reports-range:${storeId}`) || "null")?.to || localNow(); }
+    catch { return localNow(); }
+  });
   const [tableName, setTableName] = useState("");
   const [productName, setProductName] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -65,6 +73,11 @@ export default function AdminReportsPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    try { localStorage.setItem(`billiard:admin-reports-range:${storeId}`, JSON.stringify({ from, to })); }
+    catch { /* Keep the filter usable when browser storage is unavailable. */ }
+  }, [from, to, storeId]);
 
   const load = useCallback(async (nextPage = 1) => {
     if (from > to) { openSnackbar({ text: "Thời điểm bắt đầu không được sau thời điểm kết thúc", type: "warning", position: "top" }); return; }
@@ -115,9 +128,9 @@ export default function AdminReportsPage() {
   useEffect(() => {
     if (user?.role !== "admin") return;
     void inventoryService.list().then((result) => setInventory(result.items)).catch((error) => {
-      openSnackbar({ text: messageOf(error), type: "error", position: "top" });
+      openSnackbarRef.current({ text: messageOf(error), type: "error", position: "top" });
     }).finally(() => setInventoryLoading(false));
-  }, [user?.role, openSnackbar]);
+  }, [user?.role]);
 
   const inventorySummary = useMemo(() => ({
     total: inventory.length,

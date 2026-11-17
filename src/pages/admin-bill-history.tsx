@@ -7,7 +7,7 @@ import type { TableBillHistoryEvent } from "@/api/pocketbase";
 import StoreHeader from "@/components/store-header";
 import { useAuth } from "@/contexts/AuthContext";
 import { openBillPrint } from "@/components/bill-print";
-import { formatVietnamDateTime } from "@/utils/format";
+import { formatVietnamDate, formatVietnamDateTime } from "@/utils/format";
 
 const money = (value: number) => `${Math.round(Number(value || 0)).toLocaleString("vi-VN")}đ`;
 const dateTime = (value: string) => formatVietnamDateTime(value, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -68,7 +68,7 @@ export default function AdminBillHistoryPage() {
   }, [user?.role, tab]);
 
   const grouped = useMemo(() => events.reduce<Record<string, TableBillHistoryEvent[]>>((result, event) => {
-    const key = new Date(event.happenedAt).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const key = formatVietnamDate(event.happenedAt, { day: "2-digit", month: "2-digit", year: "numeric" });
     (result[key] ||= []).push(event);
     return result;
   }, {}), [events]);

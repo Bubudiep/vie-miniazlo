@@ -1,24 +1,18 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-const attendanceAdmin = (c) => {
+routerAdd("GET", "/api/admin/attendance", (c) => {
   const info = c.requestInfo()
   const auth = info.authRecord || info.auth || c.auth || null
   if (!auth) throw new UnauthorizedError("Cần đăng nhập")
   if (auth.get("role") !== "admin" || !auth.get("store")) throw new ForbiddenError("Chỉ admin cửa hàng mới được thao tác")
-  return { auth, store: String(auth.get("store")), info }
-}
-
-const validAttendanceDate = (value) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
-  const [year, month, day] = value.split("-").map(Number)
-  const date = new Date(Date.UTC(year, month - 1, day))
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-}
-
-routerAdd("GET", "/api/admin/attendance", (c) => {
-  const { store, info } = attendanceAdmin(c)
+  const store = String(auth.get("store"))
   const workDate = String((info.query || {}).date || "")
-  if (!validAttendanceDate(workDate)) throw new BadRequestError("Ngày chấm công không hợp lệ")
+  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(workDate) && (() => {
+    const [year, month, day] = workDate.split("-").map(Number)
+    const date = new Date(Date.UTC(year, month - 1, day))
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  })()
+  if (!validDate) throw new BadRequestError("Ngày chấm công không hợp lệ")
 
   const staff = $app.findRecordsByFilter("users", "store = {:store} && role = 'staff'", "fullname,username", 500, 0, { store })
   const records = $app.findRecordsByFilter("staff_attendance", "store = {:store} && work_date = {:date}", "created", 1000, 0, { store, date: workDate })
@@ -46,16 +40,25 @@ routerAdd("GET", "/api/admin/attendance", (c) => {
 })
 
 routerAdd("POST", "/api/admin/attendance", (c) => {
-  const { auth, store, info } = attendanceAdmin(c)
+  const info = c.requestInfo()
+  const auth = info.authRecord || info.auth || c.auth || null
+  if (!auth) throw new UnauthorizedError("Cần đăng nhập")
+  if (auth.get("role") !== "admin" || !auth.get("store")) throw new ForbiddenError("Chỉ admin cửa hàng mới được thao tác")
+  const store = String(auth.get("store"))
   const input = info.body || {}
   const staffId = String(input.staff || "")
   const workDate = String(input.workDate || "")
   const status = String(input.status || "")
   const checkIn = String(input.checkIn || "")
   const checkOut = String(input.checkOut || "")
+  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(workDate) && (() => {
+    const [year, month, day] = workDate.split("-").map(Number)
+    const date = new Date(Date.UTC(year, month - 1, day))
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  })()
   const validTime = (value) => value === "" || /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
 
-  if (!staffId || !validAttendanceDate(workDate)) throw new BadRequestError("Nhân viên hoặc ngày chấm công không hợp lệ")
+  if (!staffId || !validDate) throw new BadRequestError("Nhân viên hoặc ngày chấm công không hợp lệ")
   if (!["present", "absent"].includes(status)) throw new BadRequestError("Trạng thái chấm công không hợp lệ")
   if (!validTime(checkIn) || !validTime(checkOut)) throw new BadRequestError("Giờ vào hoặc giờ ra không hợp lệ")
   if (status === "absent" && (checkIn || checkOut)) throw new BadRequestError("Nhân viên nghỉ không thể có giờ vào/ra")

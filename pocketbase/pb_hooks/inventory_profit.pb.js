@@ -63,11 +63,18 @@ routerUse((c) => {
     const params = { store }
     if (search) { filter += " && name ~ {:search}"; params.search = search }
     const products = $app.findRecordsByFilter("products", filter, "category,name", -1, 0, params)
-    const outputSince = new Date(Date.now() - 30 * 86400000).toISOString()
+    const outputSince = new Date(Date.now() - 10 * 86400000).toISOString()
     const outputByProduct = {}
+    const outputDaysByProduct = {}
     $app.findRecordsByFilter("inventory_movements", "store = {:store} && movement_type = 'sale' && occurred_at >= {:since}", "occurred_at", -1, 0, { store, since: outputSince }).forEach((movement) => {
       const productId = String(movement.get("product") || "")
       outputByProduct[productId] = (outputByProduct[productId] || 0) + Math.max(0, -(Number(movement.get("quantity_delta")) || 0))
+      const occurredAt = new Date(movement.get("occurred_at"))
+      if (Number.isFinite(occurredAt.getTime())) {
+        const localDay = new Date(occurredAt.getTime() + 25200000).toISOString().slice(0, 10)
+        if (!outputDaysByProduct[productId]) outputDaysByProduct[productId] = {}
+        outputDaysByProduct[productId][localDay] = true
+      }
     })
     const items = products.map((product) => {
       const onHand = productInventory($app, product.id)
@@ -81,7 +88,8 @@ routerUse((c) => {
         onHand,
         reserved,
         available: onHand - reserved,
-        output30Days: outputByProduct[product.id] || 0
+        output10Days: outputByProduct[product.id] || 0,
+        outputDays10: Object.keys(outputDaysByProduct[product.id] || {}).length
       }
     })
     const movements = $app.findRecordsByFilter("inventory_movements", "store = {:store}", "-occurred_at", 100, 0, { store })

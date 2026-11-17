@@ -7,10 +7,11 @@ import type { StaffAccount, StaffAttendance } from "@/api/pocketbase";
 import AdminNav from "@/components/admin-nav";
 import StoreHeader from "@/components/store-header";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatVietnamDate } from "@/utils/format";
 
 type AttendanceRow = StaffAccount & { attendance: StaffAttendance | null };
 type Draft = { staff: StaffAccount; status: 'present' | 'absent'; checkIn: string; checkOut: string };
-const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date());
 const messageOf = (error: any) => error?.response?.data?.error || error?.response?.message || error?.message || "Không thể tải bảng chấm công";
 
 export default function AdminAttendancePage() {
