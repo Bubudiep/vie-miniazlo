@@ -76,13 +76,11 @@ export default function AdminBillHistoryPage() {
   if (!isAdmin && !isStaff) return null;
 
   const print = async (billId: string) => {
-    const popup = window.open("", "_blank");
-    if (!popup) { openSnackbar({ text: "Trình duyệt chặn cửa sổ in", type: "error", position: "top" }); return; }
     try {
       const result = await tableBillingService.recordPrint(billId);
-      if (!openBillPrint(result.bill, storeName, popup)) throw new Error("Trình duyệt chặn cửa sổ in");
+      if (!openBillPrint(result.bill, storeName)) throw new Error("Không thể tạo bản in");
       openSnackbar({ text: result.reprinted ? "Đã mở bản in lại" : "Đã mở bản in", type: "success", position: "top" });
-    } catch (error) { popup.close(); openSnackbar({ text: messageOf(error), type: "error", position: "top" }); }
+    } catch (error) { openSnackbar({ text: messageOf(error), type: "error", position: "top" }); }
   };
 
   return <Page className="min-h-screen bg-slate-50 pb-[calc(env(safe-area-inset-bottom,0px)+28px)]">

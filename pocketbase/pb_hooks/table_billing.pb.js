@@ -549,8 +549,8 @@ routerAdd("GET", "/api/table-billing/auto-open-products", (c) => {
   const store = String(auth.get("store") || "");
   if (!store) throw new ForbiddenError("Tài khoản chưa thuộc cửa hàng");
   const record = $app.findRecordById("stores", store);
-  let items = record.get("auto_open_products") || [];
-  if (typeof items === "string") { try { items = JSON.parse(items); } catch (e) { items = []; } }
+  let items = [];
+  try { items = JSON.parse(record.getString("auto_open_products") || "[]"); } catch (e) {}
   return c.json(200, { items: Array.isArray(items) ? items : [] });
 });
 
@@ -2509,8 +2509,10 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       bill.set("started_at", openedAt);
       txApp.save(bill);
       const storeRecord = txApp.findRecordById("stores", store);
-      let autoItems = input.useDefaultProducts === false ? [] : storeRecord.get("auto_open_products") || [];
-      if (typeof autoItems === "string") { try { autoItems = JSON.parse(autoItems); } catch (e) { autoItems = []; } }
+      let autoItems = [];
+      if (input.useDefaultProducts !== false) {
+        try { autoItems = JSON.parse(storeRecord.getString("auto_open_products") || "[]"); } catch (e) {}
+      }
       const approvalRequired = !canOperateBill;
       (Array.isArray(autoItems) ? autoItems : []).forEach((configured) => {
         const quantity = Number(configured.quantity);

@@ -579,14 +579,12 @@ export default function PlayingPage() {
 
   const printBill = async () => {
     if (!bill || !canOperateBill) return;
-    const popup = window.open("", "_blank");
-    if (!popup) { openSnackbar({ text: "Trình duyệt chặn cửa sổ in", type: "error" }); return; }
     try {
       const result = await tableBillingService.recordPrint(bill.id);
       const printable = { ...result.bill, tableName: bill.tableName };
-      if (!openBillPrint(printable, storeName, popup)) throw new Error("Trình duyệt chặn cửa sổ in");
+      if (!openBillPrint(printable, storeName)) throw new Error("Không thể tạo bản in");
       openSnackbar({ text: result.reprinted ? "Đã mở bản in lại" : "Đã mở bản in", type: "success" });
-    } catch (error) { popup.close(); openSnackbar({ text: errorMessage(error), type: "error" }); }
+    } catch (error) { openSnackbar({ text: errorMessage(error), type: "error" }); }
   };
 
   const payLegacyOrder = async () => {
