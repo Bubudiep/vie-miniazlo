@@ -241,6 +241,10 @@ export default function TablesPage() {
         const latestMap = await tableService.getMap();
         setTableMap(latestMap);
         bill = latestMap.activeBills.find((activeBill) => activeBill.table === table.id);
+        if (!bill) {
+          const result = await tableService.getActiveBill(table.id);
+          if (result.billId) bill = { id: result.billId, table: table.id, customer: "", status: "open" };
+        }
       } catch {
         return void openSnackbar({ text: "Không thể tải hóa đơn của bàn. Vui lòng thử lại.", type: "error" });
       }

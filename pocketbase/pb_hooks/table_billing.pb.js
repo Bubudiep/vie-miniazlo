@@ -2582,6 +2582,13 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     return c.json(200, { ok: true, billId });
   }
 
+  if (action === "get_active_bill") {
+    requireBillOperator();
+    const table = findStoreTable($app, String(input.tableId || ""));
+    const bill = findActiveBill($app, table.id);
+    return c.json(200, { billId: bill ? bill.id : "" });
+  }
+
   if (action === "toggle_pause") {
     requireBillOperator();
     let billId = "";

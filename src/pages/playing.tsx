@@ -286,8 +286,8 @@ export default function PlayingPage() {
     openSnackbar({ text: "Đã thêm vào danh sách tạm", type: "success" });
   };
 
-  const confirmCart = async () => {
-    if (!bill || !isOpen || !cartItems.length) return;
+  const addCartItems = async (closeCart = false) => {
+    if (!bill || !isOpen || !canAddItems || !cartItems.length) return;
     const invalidProduct = cartItems.find((product) => {
       const quantity = Number(cart[product.id]);
       return product.billingUnit !== "hour" && (!Number.isFinite(quantity) || quantity <= 0 || (product.billingUnit === "quantity" && !Number.isInteger(quantity)));
@@ -310,7 +310,7 @@ export default function PlayingPage() {
         pendingProduct = null;
       }
       openSnackbar({ text: canOperateBill ? "Đã thêm món vào bill" : "Đã gửi yêu cầu món, vui lòng chờ nhân viên duyệt", type: "success" });
-      setCartOpen(false);
+      if (closeCart) setCartOpen(false);
       setActiveTab("status");
     } catch (error) {
       if (pendingProduct) {
@@ -325,7 +325,7 @@ export default function PlayingPage() {
             setCart((current) => { const next = { ...current }; delete next[savedProduct.id]; return next; });
             const remainingProducts = cartItems.filter((product) => !completedProductIds.has(product.id));
             if (!remainingProducts.length) {
-              setCartOpen(false);
+              if (closeCart) setCartOpen(false);
               setActiveTab("status");
             }
             const savedMessage = canOperateBill ? "đã được thêm vào bill" : "đã được gửi để nhân viên duyệt";
@@ -341,6 +341,8 @@ export default function PlayingPage() {
       setBusy(false);
     }
   };
+
+  const confirmCart = () => addCartItems(true);
 
   const updateQuantity = async (itemId: string, reason = "") => {
     if (!bill || !canEdit || busy) return;
@@ -716,7 +718,7 @@ export default function PlayingPage() {
     </main>
     {canStartPayment && <footer className="shrink-0 border-t border-slate-200 bg-white px-3 pb-2 pt-3">
       <div className="mx-auto max-w-4xl">
-        {activeTab === "menu" ? <button aria-label={`Mở giỏ hàng, ${cartItems.length} mặt hàng, tạm tính ${money(cartTotal)}`} onClick={() => setCartOpen(true)} className="flex min-h-12 w-full flex-col items-center justify-center rounded-lg border border-slate-300 px-2 py-1 text-sm font-semibold text-slate-700"><span className="flex items-center gap-2"><FaShoppingCart size={16} /><span>Giỏ hàng</span><span className="rounded-full bg-slate-100 px-1.5 text-xs">{cartItems.length}</span></span><span className="text-xs font-medium text-slate-500">{money(cartTotal)}{cartItems.some((product) => product.billingUnit === "hour") ? " + giờ" : ""}</span></button> : <button disabled={busy} onClick={() => void openPaymentSheet()} className="flex min-h-12 w-full items-center justify-between rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-50"><span>Thanh toán bill</span><span>{money(bill.totalAmount)}</span></button>}
+        {activeTab === "menu" ? <div className="flex gap-2"><button aria-label={`Mở giỏ hàng, ${cartItems.length} mặt hàng, tạm tính ${money(cartTotal)}`} onClick={() => setCartOpen(true)} className="flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center rounded-lg border border-slate-300 px-2 py-1 text-sm font-semibold text-slate-700"><span className="flex items-center gap-2"><FaShoppingCart size={16} /><span>Giỏ hàng</span><span className="rounded-full bg-slate-100 px-1.5 text-xs">{cartItems.length}</span></span><span className="text-xs font-medium text-slate-500">{money(cartTotal)}{cartItems.some((product) => product.billingUnit === "hour") ? " + giờ" : ""}</span></button><button disabled={busy || !canAddItems || !cartItems.length} onClick={() => void addCartItems(true)} className="flex min-h-12 min-w-0 flex-1 items-center justify-center rounded-lg bg-emerald-700 px-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Đang thêm..." : "Thêm nhanh"}</button></div> : <button disabled={busy} onClick={() => void openPaymentSheet()} className="flex min-h-12 w-full items-center justify-between rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-50"><span>Thanh toán bill</span><span>{money(bill.totalAmount)}</span></button>}
       </div>
     </footer>}
     <Sheet visible={promotionSheetOpen} onClose={() => !busy && setPromotionSheetOpen(false)} autoHeight swipeToClose unmountOnClose>

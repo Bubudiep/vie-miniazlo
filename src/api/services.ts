@@ -171,6 +171,10 @@ export const tableService = {
     return pb.send<{ ok: boolean; billId: string }>('/api/table-billing/action', { method: 'POST', body: { action: 'start', tableId, customerId, useDefaultProducts } });
   },
 
+  async getActiveBill(tableId: string) {
+    return pb.send<{ billId: string }>('/api/table-billing/action', { method: 'POST', body: { action: 'get_active_bill', tableId } });
+  },
+
   async delete(id: string, password: string) {
     return pb.send<{ ok: boolean }>('/api/table-billing/action', { method: 'POST', body: { action: 'delete_table', tableId: id, password } });
   },
