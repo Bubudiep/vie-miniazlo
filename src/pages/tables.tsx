@@ -233,9 +233,18 @@ export default function TablesPage() {
     return sortedTables.filter((table) => normalizeSearch(tableLabel(table)).includes(query));
   }, [sortedTables, tableSearch, tableNumbers]);
   const openBillFor = (tableId: string) => tableMap?.activeBills.find((bill) => bill.table === tableId);
-  const openTable = (table: Table) => {
+  const openTable = async (table: Table) => {
     if (editingLayout) return;
-    const bill = openBillFor(table.id);
+    let bill = openBillFor(table.id);
+    if (!bill && !isAdmin && table.status !== "available") {
+      try {
+        const latestMap = await tableService.getMap();
+        setTableMap(latestMap);
+        bill = latestMap.activeBills.find((activeBill) => activeBill.table === table.id);
+      } catch {
+        return void openSnackbar({ text: "Không thể tải hóa đơn của bàn. Vui lòng thử lại.", type: "error" });
+      }
+    }
     if (bill) return void navigate(`/bills/${bill.id}`);
     if (!isAdmin && table.status !== "available") return void openSnackbar({ text: "Bàn chưa sẵn sàng để bắt đầu sử dụng", type: "warning" });
     setSelectedTable(table); setUseDefaultProducts(true); setSelectedCustomer(""); setCustomerQuery(""); setCustomerPickerOpen(false);
