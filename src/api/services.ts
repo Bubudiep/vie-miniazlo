@@ -252,11 +252,11 @@ export const tableBillingService = {
   async transferTable(billId: string, targetTableId: string) {
     return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'transfer_table', billId, targetTableId } });
   },
-  async updateItem(billId: string, itemId: string, quantity: number) {
-    return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'update_item', billId, itemId, quantity } });
+  async updateItem(billId: string, itemId: string, quantity: number, reason = '') {
+    return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'update_item', billId, itemId, quantity, ...(reason ? { reason } : {}) } });
   },
-  async updateItemTime(billId: string, itemId: string, startedAt: string, stoppedAt: string) {
-    return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'update_item_time', billId, itemId, startedAt, stoppedAt } });
+  async updateItemTime(billId: string, itemId: string, startedAt: string, stoppedAt: string, reason = '') {
+    return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'update_item_time', billId, itemId, startedAt, stoppedAt, ...(reason ? { reason } : {}) } });
   },
   async deleteItem(billId: string, itemId: string, reason = '') {
     return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'delete_item', billId, itemId, reason } });

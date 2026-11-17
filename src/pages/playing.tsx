@@ -48,6 +48,7 @@ export default function PlayingPage() {
   const isStaff = user?.role === "staff";
   const canOperateBill = isAdmin || isStaff;
   const canManageSettings = isAdmin;
+  const canManageOperations = canOperateBill;
   const navigate = useNavigate();
   const { openSnackbar } = useSnackbar();
   const [bill, setBill] = useState<TableBill | null>(null);
@@ -64,6 +65,8 @@ export default function PlayingPage() {
   const [timeStoppedInput, setTimeStoppedInput] = useState("");
   const [deletingItem, setDeletingItem] = useState<TableBill["items"][number] | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
+  const [editReason, setEditReason] = useState("");
+  const [pendingEdit, setPendingEdit] = useState<{ type: "quantity" | "time"; itemId: string; quantity?: number; startedAt?: string; stoppedAt?: string } | null>(null);
   const [productQuantityDraft, setProductQuantityDraft] = useState<Record<string, string>>({});
   const [cart, setCart] = useState<Record<string, string>>({});
   const [cartOpen, setCartOpen] = useState(false);
@@ -170,9 +173,9 @@ export default function PlayingPage() {
   }, [bill?.id, bill?.status, paymentSheetOpen]);
 
   useEffect(() => {
-    if (!operationsOpen || !isAdmin) return;
+    if (!operationsOpen || !canManageOperations) return;
     tableService.getMap().then(setOperationMap).catch((error) => openSnackbar({ text: errorMessage(error), type: "error" }));
-  }, [isAdmin, operationsOpen]);
+  }, [canManageOperations, operationsOpen]);
 
   const categories = useMemo(() => ["Tất cả", ...Array.from(new Set(products.map((product) => product.category || "Khác"))).sort((a, b) => a.localeCompare(b, "vi"))], [products]);
   const visibleProducts = useMemo(() => products.filter((product) => (activeCategory === "Tất cả" || (product.category || "Khác") === activeCategory) && `${product.name} ${product.category || ""}`.toLocaleLowerCase("vi").includes(productQuery.trim().toLocaleLowerCase("vi"))), [activeCategory, productQuery, products]);
@@ -187,7 +190,6 @@ export default function PlayingPage() {
   const hasHourlyItem = Boolean(bill?.items.some((item) => item.billingUnit === "hour"));
   const hasHourlyCartItem = cartItems.some((item) => item.billingUnit === "hour");
   const isWalletPending = bill?.status === "wallet_pending" || Boolean(isStopped && bill?.paymentRequested);
-  const isPendingTransfer = isWalletPending && bill?.paymentMethod === "transfer";
   const payableAmount = bill?.totalAmount || 0;
   const paymentDiscountPercentValue = Number(paymentDiscountInput);
   const paymentDiscountValid = !paymentDiscountEnabled || (paymentDiscountInput !== "" && Number.isSafeInteger(paymentDiscountPercentValue) && paymentDiscountPercentValue >= 0 && paymentDiscountPercentValue <= 100);
@@ -249,7 +251,7 @@ export default function PlayingPage() {
   };
 
   const openPendingPaymentSheet = (mode: "wallet" | "transfer") => {
-    if (!bill || !(isAdmin || (isStaff && bill.paymentMethod === "transfer")) || !isWalletPending) return;
+    if (!bill || !canOperateBill || !isWalletPending) return;
     setPaymentMode(mode);
     setCashReceivedInput("");
     setPaymentDiscountEnabled(false);
@@ -340,15 +342,20 @@ export default function PlayingPage() {
     }
   };
 
-  const updateQuantity = async (itemId: string) => {
+  const updateQuantity = async (itemId: string, reason = "") => {
     if (!bill || !canEdit || busy) return;
     const quantity = Number(quantityDraft[itemId]);
     const item = bill.items.find((line) => line.id === itemId);
     if (!item || !Number.isFinite(quantity) || quantity <= 0 || (item.billingUnit === "quantity" && !Number.isInteger(quantity))) return;
     if (quantity === item.quantity) return;
+    if (isStaff && !reason.trim()) {
+      setEditReason("");
+      setPendingEdit({ type: "quantity", itemId, quantity });
+      return;
+    }
     setBusy(true);
     try {
-      const response = await tableBillingService.updateItem(bill.id, itemId, quantity);
+      const response = await tableBillingService.updateItem(bill.id, itemId, quantity, reason.trim());
       setBill({ ...response.bill, tableName: bill.tableName });
       setQuantityDraft(draftsFor(response.bill.items));
     } catch (error) {
@@ -366,7 +373,7 @@ export default function PlayingPage() {
     setTimeStoppedInput(localDateTimeInput(item.stoppedAt || ""));
   };
 
-  const updateItemTime = async () => {
+  const updateItemTime = async (reason = "") => {
     if (!bill || !timeEditItemId || !canEdit || busy) return;
     const startedAt = Date.parse(fromVietnamDateTimeInput(timeStartedInput));
     const stoppedAt = timeStoppedInput ? Date.parse(fromVietnamDateTimeInput(timeStoppedInput)) : NaN;
@@ -374,9 +381,14 @@ export default function PlayingPage() {
       openSnackbar({ text: "Thời gian không hợp lệ; giờ kết thúc phải sau giờ bắt đầu và không ở tương lai", type: "warning" });
       return;
     }
+    if (isStaff && !reason.trim()) {
+      setEditReason("");
+      setPendingEdit({ type: "time", itemId: timeEditItemId, startedAt: new Date(startedAt).toISOString(), stoppedAt: timeStoppedInput ? new Date(stoppedAt).toISOString() : "" });
+      return;
+    }
     setBusy(true);
     try {
-      const result = await tableBillingService.updateItemTime(bill.id, timeEditItemId, new Date(startedAt).toISOString(), timeStoppedInput ? new Date(stoppedAt).toISOString() : "");
+      const result = await tableBillingService.updateItemTime(bill.id, timeEditItemId, new Date(startedAt).toISOString(), timeStoppedInput ? new Date(stoppedAt).toISOString() : "", reason.trim());
       setBill({ ...result.bill, tableName: bill.tableName });
       setQuantityDraft(draftsFor(result.bill.items));
       setTimeEditItemId("");
@@ -386,6 +398,24 @@ export default function PlayingPage() {
       await refresh();
     } finally {
       setBusy(false);
+    }
+  };
+
+  const submitEditReason = async () => {
+    const reason = editReason.trim();
+    if (!pendingEdit || !reason || reason.length > 500) {
+      openSnackbar({ text: "Vui lòng nhập lý do, tối đa 500 ký tự", type: "warning" });
+      return;
+    }
+    const pending = pendingEdit;
+    setPendingEdit(null);
+    setEditReason("");
+    if (pending.type === "quantity") await updateQuantity(pending.itemId, reason);
+    else {
+      setTimeEditItemId(pending.itemId);
+      setTimeStartedInput(localDateTimeInput(pending.startedAt || ""));
+      setTimeStoppedInput(localDateTimeInput(pending.stoppedAt || ""));
+      await updateItemTime(reason);
     }
   };
 
@@ -552,7 +582,7 @@ export default function PlayingPage() {
   };
 
   const approveWallet = async () => {
-    if (!bill || busy || !isAdmin || !paymentDiscountValid) return;
+    if (!bill || busy || !canOperateBill || !paymentDiscountValid) return;
     setBusy(true);
     try {
       const result = await tableBillingService.approveWallet(bill.id, appliedPaymentDiscountPercent, paymentDiscountEnabled ? paymentDiscountNoteInput.trim() : "");
@@ -630,7 +660,7 @@ export default function PlayingPage() {
       <button aria-label="Quay lại sơ đồ bàn" title="Quay lại" onClick={() => navigate("/")} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700"><Icon icon="zi-arrow-left" /></button>
       <div className="min-w-0 flex-1"><Text.Title size="small" className="truncate text-slate-900">{bill.tableName}</Text.Title><Text size="xSmall" className="text-slate-500">Bắt đầu {formatVietnamDateTime(bill.startedAt, { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}</Text></div>
       <span className={`shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${bill.status === "paid" ? "bg-emerald-100 text-emerald-800" : bill.status === "wallet_pending" || (isStopped && bill.paymentRequested) || isBillingPaused ? "bg-amber-100 text-amber-900" : bill.status === "stopped" ? "bg-slate-100 text-slate-700" : "bg-rose-100 text-rose-800"}`}>{billStatus}</span>
-      {canManageSettings && isOpen && <button aria-label="Mở menu thao tác bill" title="Thao tác bill" onClick={() => setOperationsOpen(true)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700"><Icon icon="zi-more-vert" /></button>}
+      {canManageOperations && isOpen && <button aria-label="Mở menu thao tác bill" title="Thao tác bill" onClick={() => setOperationsOpen(true)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700"><Icon icon="zi-more-vert" /></button>}
     </header>
 
     <div role="tablist" aria-label="Bàn đang chơi" className="mx-auto w-full max-w-4xl shrink-0 px-4 pt-3">
@@ -660,7 +690,7 @@ export default function PlayingPage() {
         </section>}
 
         {isBillingPaused && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Bill đang tạm dừng tính tiền. Thời gian dừng sẽ không được tính vào tiền bàn.</div>}
-        {isWalletPending && <div className={`rounded-lg border p-3 text-sm ${bill.paymentError ? "border-rose-300 bg-rose-50 text-rose-900" : "border-amber-300 bg-amber-50 text-amber-900"}`}>{bill.paymentError || (bill.paymentMethod === "transfer" ? "Đang chờ admin xác nhận chuyển khoản." : "Đang chờ admin duyệt ví.")}</div>}
+         {isWalletPending && <div className={`rounded-lg border p-3 text-sm ${bill.paymentError ? "border-rose-300 bg-rose-50 text-rose-900" : "border-amber-300 bg-amber-50 text-amber-900"}`}>{bill.paymentError || (bill.paymentMethod === "transfer" ? "Đang chờ nhân viên hoặc admin xác nhận chuyển khoản." : "Đang chờ nhân viên hoặc admin duyệt ví.")}</div>}
         {bill.status === "paid" && <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">Đã thanh toán bằng {bill.paymentMethod === "cash" ? "tiền mặt" : bill.paymentMethod === "transfer" ? "chuyển khoản" : "ví"}{bill.paidAt ? ` lúc ${formatVietnamDateTime(bill.paidAt, { hour: "2-digit", minute: "2-digit" })}` : ""}.</div>}
 
         <section>
@@ -675,7 +705,7 @@ export default function PlayingPage() {
         </section>
 
         {paymentDone && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">Khuyến mại đã dùng {money(paymentDone.promoUsed || 0)}, tài khoản chính đã dùng {money(paymentDone.mainUsed || 0)}.</div>}
-        {isWalletPending && (isAdmin || (isStaff && bill.paymentMethod === "transfer")) && <div className="grid grid-cols-2 gap-2"><button disabled={busy} onClick={() => openPendingPaymentSheet(bill.paymentMethod === "wallet" ? "wallet" : "transfer")} className="min-h-11 rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{bill.paymentMethod === "wallet" ? "Duyệt trừ ví" : "Xác nhận chuyển khoản"}</button><button disabled={busy} onClick={openCashPaymentSheet} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 disabled:opacity-50">Ghi nhận tiền mặt</button></div>}
+         {isWalletPending && canOperateBill && <div className="grid grid-cols-2 gap-2"><button disabled={busy} onClick={() => openPendingPaymentSheet(bill.paymentMethod === "wallet" ? "wallet" : "transfer")} className="min-h-11 rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{bill.paymentMethod === "wallet" ? "Duyệt trừ ví" : "Xác nhận chuyển khoản"}</button><button disabled={busy} onClick={openCashPaymentSheet} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 disabled:opacity-50">Ghi nhận tiền mặt</button></div>}
         {bill.status === "paid" && canOperateBill && <button disabled={busy} onClick={() => void printBill()} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800"><Icon icon="zi-print" />In bill</button>}
       </div> : <div className="space-y-5">
         <label className="relative block"><span className="sr-only">Tìm mặt hàng</span><Icon icon="zi-search" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="search" value={productQuery} onChange={(event) => setProductQuery(event.target.value)} placeholder="Tìm mặt hàng" className="min-h-11 w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-base text-slate-900 placeholder:text-slate-400" /></label>
@@ -704,6 +734,13 @@ export default function PlayingPage() {
         <div className="grid grid-cols-2 gap-3"><button disabled={busy} onClick={() => setDeletingItem(null)} className="min-h-12 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 disabled:opacity-50">Hủy</button><button disabled={busy || !canEdit || !deleteReason.trim()} onClick={() => deletingItem && void removeItem(deletingItem.id, deleteReason)} className="min-h-12 rounded-lg bg-rose-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Đang xóa..." : "Xác nhận xóa"}</button></div>
       </Box>
     </Sheet>
+    <Sheet visible={Boolean(pendingEdit)} onClose={() => !busy && setPendingEdit(null)} autoHeight swipeToClose={!busy} unmountOnClose>
+      <Box className="space-y-4 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4">
+        <div className="flex items-center justify-between"><div><Text.Title size="small">Nhập lý do điều chỉnh</Text.Title><Text size="xSmall" className="mt-1 block text-slate-500">Lý do sẽ được lưu vào lịch sử bill.</Text></div><button disabled={busy} aria-label="Đóng nhập lý do" onClick={() => setPendingEdit(null)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100"><Icon icon="zi-close" /></button></div>
+        <label htmlFor="bill-edit-reason" className="block text-sm font-medium text-slate-700">Lý do <span className="text-rose-700">(bắt buộc)</span><textarea id="bill-edit-reason" autoFocus maxLength={500} rows={4} value={editReason} onChange={(event) => setEditReason(event.target.value)} placeholder="Nhập lý do điều chỉnh" className="mt-2 w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900" /></label>
+        <button disabled={busy || !editReason.trim()} onClick={() => void submitEditReason()} className="min-h-12 w-full rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-50">Xác nhận điều chỉnh</button>
+      </Box>
+    </Sheet>
     <Sheet visible={Boolean(timeEditItemId)} onClose={() => !busy && setTimeEditItemId("")} autoHeight swipeToClose unmountOnClose>
       <Box className="flex max-h-[85dvh] flex-col overflow-hidden px-0 pt-0">
         <div className="flex shrink-0 items-center justify-between px-4 pb-3 pt-4"><div><Text.Title size="small">Sửa thời gian tính tiền</Text.Title><Text size="xSmall" className="mt-1 text-slate-500">{bill.items.find((item) => item.id === timeEditItemId)?.name || bill.tableName}</Text></div><button aria-label="Đóng sửa thời gian" onClick={() => setTimeEditItemId("")} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-700"><Icon icon="zi-close" /></button></div>
@@ -714,7 +751,7 @@ export default function PlayingPage() {
         <div className="shrink-0 border-t border-slate-200 bg-white px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+16px)]"><button disabled={busy || !timeStartedInput} onClick={() => void updateItemTime()} className="min-h-12 w-full rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Đang lưu..." : "Lưu thời gian"}</button></div>
       </Box>
     </Sheet>
-    <Sheet visible={paymentSheetOpen && (canStartPayment || (isAdmin && isWalletPending) || (isStaff && isPendingTransfer))} onClose={() => setPaymentSheetOpen(false)} autoHeight swipeToClose unmountOnClose>
+    <Sheet visible={paymentSheetOpen && (canStartPayment || (canOperateBill && isWalletPending))} onClose={() => setPaymentSheetOpen(false)} autoHeight swipeToClose unmountOnClose>
       <Box className="flex max-h-[90dvh] flex-col overflow-hidden px-0 pt-0">
         <div className="flex shrink-0 items-center justify-between px-4 pb-3 pt-4"><div><Text.Title size="small">Thanh toán bill</Text.Title><Text size="xSmall" className="mt-1 text-slate-500">{bill.tableName} · {money(bill.totalAmount)}</Text></div><button aria-label="Đóng thanh toán" onClick={() => setPaymentSheetOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-700"><Icon icon="zi-close" /></button></div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 pb-4">

@@ -948,7 +948,16 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     !["pay_manual", "approve_wallet"].includes(action)
   )
     throw new BadRequestError("Chiết khấu chỉ áp dụng khi xác nhận thanh toán");
-  if ((hasPaymentDiscount || hasPaymentDiscountNote) && !isAdmin)
+  const requestedPaymentDiscount = hasPaymentDiscount
+    ? Number(input.paymentDiscountPercent)
+    : 0;
+  const requestedPaymentDiscountNote = hasPaymentDiscountNote
+    ? String(input.paymentDiscountNote || "").trim()
+    : "";
+  if (
+    !isAdmin &&
+    (requestedPaymentDiscount !== 0 || requestedPaymentDiscountNote)
+  )
     throw new ForbiddenError(
       "Chỉ admin mới được áp dụng chiết khấu thanh toán",
     );
@@ -2231,7 +2240,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       billId = bill.id;
     });
     markBillNotificationsRead($app, store, auth.id, billId);
-    publishStaffQueue($app, store, auth.id, "payment");
+    publishStaffQueue($app, store, auth.id, "queue");
     return c.json(200, { ok: true, bill: detail($app, $app.findRecordById("table_bills", billId)) });
   }
 
@@ -2275,6 +2284,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       txApp.save(bill);
       billId = bill.id;
     });
+    publishStaffQueue($app, store, auth.id, "queue");
     return c.json(200, {
       ok: true,
       bill: detail($app, $app.findRecordById("table_bills", billId)),
@@ -2513,7 +2523,6 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       if (input.useDefaultProducts !== false) {
         try { autoItems = JSON.parse(storeRecord.getString("auto_open_products") || "[]"); } catch (e) {}
       }
-      const approvalRequired = !canOperateBill;
       (Array.isArray(autoItems) ? autoItems : []).forEach((configured) => {
         const quantity = Number(configured.quantity);
         if (!Number.isFinite(quantity) || quantity <= 0) return;
@@ -2524,7 +2533,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
         if (unit === "hour" && billItems(txApp, bill.id).some((existing) => existing.get("billing_unit") === "hour")) return;
         if (unit === "quantity" && !Number.isInteger(quantity)) return;
         const itemQuantity = unit === "hour" ? 1 : quantity;
-        if (unit !== "hour" && !approvalRequired && product.get("kind") !== "service") ensureProductAvailable(txApp, product.id, quantity);
+        if (unit !== "hour" && product.get("kind") !== "service") ensureProductAvailable(txApp, product.id, quantity);
         const price = Number(product.get("price"));
         if (!Number.isInteger(price) || price < 0) throw new BadRequestError("Giá mặt hàng phải là số nguyên không âm");
         const item = new Record(txApp.findCollectionByNameOrId("table_bill_items"));
@@ -2539,18 +2548,18 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
         item.set("purchase_price", Math.max(0, Math.round(Number(product.get("purchase_price")) || 0)));
         if (unit === "hour") item.set("time_pricing", normalizeTimePricing(product.getString("time_pricing"), true));
         item.set("quantity", itemQuantity);
-        item.set("started_at", unit === "hour" && !approvalRequired ? openedAt : "");
+        item.set("started_at", unit === "hour" ? openedAt : "");
         item.set("paused_seconds_at_start", 0);
-        item.set("line_total", approvalRequired ? 0 : Math.round(price * quantity));
-        item.set("queue_status", approvalRequired ? "approval_pending" : "pending");
+        item.set("line_total", unit === "hour" ? 0 : Math.round(price * quantity));
+        item.set("queue_status", "pending");
         item.set("queued_at", openedAt);
         txApp.save(item);
         recordEvent(txApp, {
           store, billId: bill.id, tableName, category: "action",
-          eventType: approvalRequired ? "order_requested" : "item_added",
-          title: (approvalRequired ? "Yêu cầu " : "Thêm ") + product.get("name"),
+          eventType: "item_added",
+          title: "Thêm " + product.get("name"),
           actor: auth,
-          amount: approvalRequired ? 0 : lineAmount(item, Date.parse(openedAt), bill).amount,
+          amount: lineAmount(item, Date.parse(openedAt), bill).amount,
           details: { itemId: item.id, productId: product.id, productName: product.get("name"), billingUnit: unit, quantity, unitPrice: price },
           happenedAt: openedAt,
         });
@@ -2574,7 +2583,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   }
 
   if (action === "toggle_pause") {
-    requireAdmin();
+    requireBillOperator();
     let billId = "";
     $app.runInTransaction((txApp) => {
       const bill = findStoreBill(txApp, String(input.billId || ""));
@@ -2619,7 +2628,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   }
 
   if (action === "split_session") {
-    requireAdmin();
+    requireBillOperator();
     if (typeof input.keepCustomer !== "boolean")
       throw new BadRequestError("Cần chọn có giữ khách cho bill mới hay không");
     let stoppedBillId = "";
@@ -2711,7 +2720,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   }
 
   if (action === "merge_bills") {
-    requireAdmin();
+    requireBillOperator();
     let targetId = "";
     $app.runInTransaction((txApp) => {
       const source = findStoreBill(txApp, String(input.billId || ""));
@@ -2808,7 +2817,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   }
 
   if (action === "transfer_table") {
-    requireAdmin();
+    requireBillOperator();
     let billId = "";
     $app.runInTransaction((txApp) => {
       const bill = findStoreBill(txApp, String(input.billId || ""));
@@ -2862,7 +2871,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   }
 
   if (action === "split_bill") {
-    requireAdmin();
+    requireBillOperator();
     let newBillId = "";
     let sourceBillId = "";
     $app.runInTransaction((txApp) => {
@@ -3092,6 +3101,13 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
 
   if (action === "update_item") {
     requireBillOperator();
+    if (input.reason !== undefined && typeof input.reason !== "string")
+      throw new BadRequestError("Lý do điều chỉnh không hợp lệ");
+    const reason = String(input.reason || "").trim();
+    if (isStaff && !reason)
+      throw new BadRequestError("Nhân viên cần nhập lý do điều chỉnh số lượng");
+    if (reason.length > 500)
+      throw new BadRequestError("Lý do điều chỉnh không được vượt quá 500 ký tự");
     let billId = "";
     $app.runInTransaction((txApp) => {
       const bill = findStoreBill(txApp, String(input.billId || ""));
@@ -3156,6 +3172,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
           oldLineTotal,
           newLineTotal: Number(item.get("line_total")) || 0,
           lineTotalDelta: (Number(item.get("line_total")) || 0) - oldLineTotal,
+           ...(reason ? { reason } : {}),
         },
       });
       billId = bill.id;
@@ -3168,6 +3185,13 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
 
   if (action === "update_item_time") {
     requireBillOperator();
+    if (input.reason !== undefined && typeof input.reason !== "string")
+      throw new BadRequestError("Lý do điều chỉnh không hợp lệ");
+    const reason = String(input.reason || "").trim();
+    if (isStaff && !reason)
+      throw new BadRequestError("Nhân viên cần nhập lý do điều chỉnh thời gian");
+    if (reason.length > 500)
+      throw new BadRequestError("Lý do điều chỉnh không được vượt quá 500 ký tự");
     let billId = "";
     $app.runInTransaction((txApp) => {
       const bill = findStoreBill(txApp, String(input.billId || ""));
@@ -3245,6 +3269,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
           newStoppedAt: item.get("stopped_at") || "",
           oldLineTotal: oldAmount,
           newLineTotal: calculated.amount,
+           ...(reason ? { reason } : {}),
         },
       });
       billId = bill.id;
@@ -3587,7 +3612,6 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       });
       billId = bill.id;
     });
-    publishStaffQueue($app, store, auth.id, "payment");
     return c.json(200, {
       ok: true,
       bill: detail($app, $app.findRecordById("table_bills", billId)),
@@ -3601,7 +3625,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   }
 
   if (action === "approve_wallet") {
-    requireAdmin();
+    requireBillOperator();
     const discountPercent = paymentDiscountPercent();
     const discountNote = paymentDiscountNote();
     let result;
