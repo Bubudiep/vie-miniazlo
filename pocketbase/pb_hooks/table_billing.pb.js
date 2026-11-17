@@ -2686,6 +2686,31 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       next.set("session_id", sessionId);
       txApp.save(next);
 
+      for (const item of billItems(txApp, source.id)) {
+        if (
+          item.get("billing_unit") !== "hour" ||
+          ["cancelled", "approval_pending", "rejected"].includes(
+            String(item.get("queue_status") || ""),
+          )
+        )
+          continue;
+        const nextItem = new Record(txApp.findCollectionByNameOrId("table_bill_items"));
+        for (const field of ["store", "product", "product_name", "billing_unit", "unit_label", "unit_price", "purchase_price", "time_pricing", "queue_status", "queue_completed_at"]) {
+          const value = item.get(field);
+          if (value !== undefined && value !== null && value !== "") nextItem.set(field, value);
+        }
+        nextItem.set("bill", next.id);
+        nextItem.set("customer", next.get("customer"));
+        nextItem.set("quantity", 1);
+        nextItem.set("started_at", stoppedAt);
+        nextItem.set("stopped_at", "");
+        nextItem.set("paused_seconds_at_start", Number(next.get("paused_seconds")) || 0);
+        nextItem.set("line_total", 0);
+        txApp.save(nextItem);
+      }
+      next.set("total_amount", currentTotal(txApp, next));
+      txApp.save(next);
+
       recordEvent(txApp, {
         store,
         billId: source.id,
@@ -2931,7 +2956,37 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       );
       txApp.save(newBill);
       newBill.set("paused_seconds", Number(source.get("paused_seconds")) || 0);
-      moveItems(txApp, selected, source, newBill);
+      const splitAt = new Date().toISOString();
+      const splitAtMs = Date.parse(splitAt);
+      const targetItemIds = [];
+      for (const item of selected) {
+        if (item.get("billing_unit") !== "hour") {
+          moveItems(txApp, [item], source, newBill);
+          targetItemIds.push(item.id);
+          continue;
+        }
+
+        item.set("stopped_at", splitAt);
+        const calculated = lineAmount(item, splitAtMs, source);
+        item.set("quantity", calculated.quantity);
+        item.set("line_total", calculated.amount);
+        txApp.save(item);
+
+        const nextItem = new Record(txApp.findCollectionByNameOrId("table_bill_items"));
+        for (const field of ["store", "product", "product_name", "billing_unit", "unit_label", "unit_price", "purchase_price", "time_pricing", "queue_status", "queue_completed_at"]) {
+          const value = item.get(field);
+          if (value !== undefined && value !== null && value !== "") nextItem.set(field, value);
+        }
+        nextItem.set("bill", newBill.id);
+        nextItem.set("customer", newBill.get("customer"));
+        nextItem.set("quantity", 1);
+        nextItem.set("started_at", splitAt);
+        nextItem.set("stopped_at", "");
+        nextItem.set("paused_seconds_at_start", Number(newBill.get("paused_seconds")) || 0);
+        nextItem.set("line_total", 0);
+        txApp.save(nextItem);
+        targetItemIds.push(nextItem.id);
+      }
       source.set("total_amount", currentTotal(txApp, source));
       newBill.set("total_amount", currentTotal(txApp, newBill));
       txApp.save(source);
@@ -2950,6 +3005,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
           targetBillId: newBill.id,
           targetTableName: newTableName,
           itemIds,
+          targetItemIds,
         },
       });
       recordEvent(txApp, {
@@ -2960,7 +3016,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
         eventType: "bill_split_created",
         title: "Tạo bill từ " + sourceTableName,
         actor: auth,
-        details: { sourceBillId: source.id, sourceTableName, itemIds },
+        details: { sourceBillId: source.id, sourceTableName, itemIds: targetItemIds },
       });
       newBillId = newBill.id;
       sourceBillId = source.id;
