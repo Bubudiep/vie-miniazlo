@@ -18,7 +18,7 @@ export function openBillPrint(bill: TableBill, storeName: string | null) {
   }
   const cashReceived = Number(bill.cashReceived || 0);
   const change = bill.paymentMethod === "cash" ? Math.max(0, cashReceived - bill.totalAmount) : 0;
-  const rows = bill.items.map((item) => `<tr><td class="item"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.quantity)} ${escapeHtml(item.unitLabel || (item.billingUnit === "hour" ? "giờ" : "lần"))} × ${money(item.unitPrice)}</small></td><td class="amount">${money(item.lineTotal)}</td></tr>`).join("");
+  const rows = bill.items.map((item) => `<tr><td class="item"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.quantity)} ${escapeHtml(item.unitLabel || (item.billingUnit === "hour" ? "giờ" : "lần"))} × ${money(item.unitPrice)}</small>${item.billingUnit === "quantity" && item.startedAt ? `<small>Đặt lúc ${escapeHtml(formatVietnamDateTime(item.startedAt))}</small>` : ""}</td><td class="amount">${money(item.lineTotal)}</td></tr>`).join("");
   // XP-58 and compatible printers use 58mm paper with about 48mm of reliable print width.
   // shortcut: browsers may still show their print dialog; silent printing needs kiosk/native support.
   frame.onload = () => { printWindow.focus(); printWindow.print(); };
