@@ -83,6 +83,8 @@ routerUse((c) => {
         id: product.id,
         name: product.get("name"),
         category: product.get("category") || "Khác",
+        isActive: product.get("is_active") === true,
+        billingUnit: product.get("billing_unit") || "quantity",
         unitLabel: product.get("unit_label") || "lần",
         purchasePrice: Number(product.get("purchase_price")) || 0,
         onHand,

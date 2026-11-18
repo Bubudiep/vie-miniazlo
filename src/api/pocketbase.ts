@@ -335,6 +335,8 @@ export interface InventoryItem {
   id: string;
   name: string;
   category: string;
+  isActive: boolean;
+  billingUnit: Product['billing_unit'];
   unitLabel: string;
   purchasePrice: number;
   onHand: number;
