@@ -15,6 +15,8 @@ if (-not $chrome) {
 $profile = Join-Path $env:LOCALAPPDATA "H2Billiards\ChromeProfile"
 Start-Process -FilePath $chrome -ArgumentList @(
   "--kiosk-printing",
+  "--no-first-run",
+  "--no-default-browser-check",
   "--app=$Url",
   "--user-data-dir=$profile"
 )

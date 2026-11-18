@@ -34,7 +34,7 @@ Reverse proxy hoặc Cloudflare Tunnel chỉ cần trỏ `h2.chamcongchua.com` t
 
 ### In bill trực tiếp trên Windows
 
-Trên máy quầy có cài Google Chrome, mở `scripts/start-kiosk-print.cmd` để chạy ứng dụng với chế độ in kiosk. Nút **In bill** sẽ gửi lệnh tới máy in mặc định mà không mở hộp thoại preview. Đăng nhập được lưu trong profile Chrome riêng `H2Billiards\ChromeProfile`.
+Trên máy quầy có cài Google Chrome, chạy `scripts/install-kiosk-print-shortcut.ps1` một lần để tạo biểu tượng **H2 Billiards** ngoài Desktop. Sau đó luôn mở ứng dụng bằng biểu tượng này. Nút **In bill** sẽ gửi lệnh tới máy in mặc định mà không mở hộp thoại preview. Đăng nhập được lưu trong profile Chrome riêng `H2Billiards\ChromeProfile`.
 
 Nếu dùng địa chỉ ứng dụng khác, truyền URL khi chạy script:
 

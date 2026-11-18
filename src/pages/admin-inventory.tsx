@@ -42,7 +42,7 @@ function downloadExcel(headers: string[], rows: (string | number)[][], sheetName
 }
 
 export default function AdminInventoryPage() {
-  const { user, storeName } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const { openSnackbar } = useSnackbar();
   const openSnackbarRef = useRef(openSnackbar);
@@ -108,9 +108,8 @@ export default function AdminInventoryPage() {
       openSnackbar({ text: "Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi thử lại.", type: "warning", position: "top" });
       return;
     }
-    const printedAt = formatVietnamDateTime(new Date());
     const rows = printItems.map((item) => `<tr><td>${htmlEscape(item.name)}</td><td class="quantity">${htmlEscape(item.onHand.toLocaleString("vi-VN"))}</td></tr>`).join("");
-    popup.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Danh sách mặt hàng đang bán</title><style>@page{size:58mm auto;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#111;font:10px/1.35 Arial,"DejaVu Sans",sans-serif}.receipt{width:48mm;max-width:100%;margin:0 auto;padding:3mm 0;overflow-wrap:anywhere}.center{text-align:center}.center h1{font-size:14px;margin:0 0 3px}.muted{font-size:9px;color:#444}.line{border-top:1px dashed #333;margin:7px 0}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{padding:4px 0;border-bottom:1px dashed #888;text-align:left;vertical-align:top;overflow-wrap:anywhere}th:first-child,td:first-child{width:78%;padding-right:4px}th.quantity,td.quantity{width:22%;text-align:right}.empty{text-align:center;padding:12px 0}@media print{html,body{width:58mm}}</style></head><body><main class="receipt"><header class="center"><h1>${htmlEscape(storeName || "H2 Billiards")}</h1><div class="muted">MẶT HÀNG ĐANG BÁN</div><div class="muted">${htmlEscape(printedAt)}</div></header><div class="line"></div>${rows ? `<table><thead><tr><th>Tên mặt hàng</th><th class="quantity">Số lượng</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">Không có mặt hàng tính theo số lượng đang bán</div>'}<div class="line"></div><div>Tổng mặt hàng: ${printItems.length}</div></main><script>window.onload=()=>{window.focus();window.print()}</script></body></html>`);
+    popup.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Danh sách tồn kho</title><style>@page{size:58mm auto;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#111;font:10px/1.35 Arial,"DejaVu Sans",sans-serif}.receipt{width:48mm;max-width:100%;margin:0 auto;padding:3mm 0;overflow-wrap:anywhere}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{width:50%;padding:4px 0;border-bottom:1px dashed #888;text-align:left;vertical-align:top;overflow-wrap:anywhere}th:first-child,td:first-child{padding-right:4px}th.quantity,td.quantity{text-align:right}@media print{html,body{width:58mm}}</style></head><body><main class="receipt"><table><thead><tr><th>Mặt hàng</th><th class="quantity">Tồn hiện có</th></tr></thead><tbody>${rows}</tbody></table></main><script>window.onload=()=>{window.focus();window.print()}</script></body></html>`);
     popup.document.close();
   };
 
