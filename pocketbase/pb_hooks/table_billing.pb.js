@@ -236,11 +236,11 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
     throw new BadRequestError("Trang báo cáo không hợp lệ");
   if (paymentMethod && !["cash", "transfer", "wallet"].includes(paymentMethod))
     throw new BadRequestError("Phương thức thanh toán không hợp lệ");
-  const fromIso = fromDate.toISOString();
-  const toIso = toDate.toISOString();
+  const fromDb = fromDate.toISOString().replace("T", " ");
+  const toDb = toDate.toISOString().replace("T", " ");
   let filter =
     "store = {:store} && category = 'payment' && event_type = 'payment_completed' && happened_at >= {:from} && happened_at < {:to}";
-  const params = { store, from: fromIso, to: toIso };
+  const params = { store, from: fromDb, to: toDb };
   if (tableName) {
     filter += " && table_name ~ {:tableName}";
     params.tableName = tableName;

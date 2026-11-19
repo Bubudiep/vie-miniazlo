@@ -194,9 +194,9 @@ routerUse((c) => {
     const fromDate = parseRange(from, false)
     const toDate = parseRange(to, true)
     if (!fromDate || !toDate || fromDate >= toDate) throw new BadRequestError("Khoảng thời gian không hợp lệ")
-    const fromIso = fromDate.toISOString()
-    const toIso = toDate.toISOString()
-    const bills = $app.findRecordsByFilter("table_bills", "store = {:store} && status = 'paid' && paid_at >= {:from} && paid_at < {:to}", "paid_at", -1, 0, { store, from: fromIso, to: toIso })
+    const fromDb = fromDate.toISOString().replace("T", " ")
+    const toDb = toDate.toISOString().replace("T", " ")
+    const bills = $app.findRecordsByFilter("table_bills", "store = {:store} && status = 'paid' && paid_at >= {:from} && paid_at < {:to}", "paid_at", -1, 0, { store, from: fromDb, to: toDb })
     const products = {}
     const daily = {}
     const hourly = {}
@@ -244,7 +244,7 @@ routerUse((c) => {
       daily[date] = day
       hourly[hour] = hourRow
     }
-    const expenses = $app.findRecordsByFilter("expenses", "store = {:store} && spent_at >= {:from} && spent_at < {:to}", "-spent_at", -1, 0, { store, from: fromIso, to: toIso })
+    const expenses = $app.findRecordsByFilter("expenses", "store = {:store} && spent_at >= {:from} && spent_at < {:to}", "-spent_at", -1, 0, { store, from: fromDb, to: toDb })
     let otherExpenses = 0
     for (const expense of expenses) {
       const amount = Math.max(0, Math.round(Number(expense.get("amount")) || 0))
