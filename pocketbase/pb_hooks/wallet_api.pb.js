@@ -388,9 +388,11 @@ routerAdd("GET", "/api/wallet/me/transactions", (c) => {
   const query = info.query || {}
   const page = Math.max(1, Number(query.page || 1))
   const perPage = Math.min(50, Math.max(1, Number(query.perPage || 20)))
-  const all = $app.findRecordsByFilter("wallet_transactions", "wallet = {:wallet}", "-created", -1, 0, { wallet: wallet.id })
   const start = (page - 1) * perPage
-  return c.json(200, { page, perPage, totalItems: all.length, items: all.slice(start, start + perPage).map((item) => item.publicExport()) })
+  const total = new DynamicModel({ count: 0 })
+  $app.db().newQuery("SELECT COUNT(*) AS count FROM wallet_transactions WHERE wallet = {:wallet}").bind({ wallet: wallet.id }).one(total)
+  const items = $app.findRecordsByFilter("wallet_transactions", "wallet = {:wallet}", "-created", perPage, start, { wallet: wallet.id })
+  return c.json(200, { page, perPage, totalItems: Number(total.count) || 0, items: items.map((item) => item.publicExport()) })
 })
 
 routerAdd("GET", "/api/admin/wallets/users", (c) => {
@@ -493,9 +495,11 @@ routerAdd("GET", "/api/admin/wallets/transactions", (c) => {
   const query = info.query || {}
   const page = Math.max(1, Number(query.page || 1))
   const perPage = Math.min(50, Math.max(1, Number(query.perPage || 20)))
-  const all = $app.findRecordsByFilter("wallet_transactions", "wallet = {:wallet}", "-created", -1, 0, { wallet: wallet.id })
   const start = (page - 1) * perPage
-  return c.json(200, { page, perPage, totalItems: all.length, items: all.slice(start, start + perPage).map((item) => item.publicExport()) })
+  const total = new DynamicModel({ count: 0 })
+  $app.db().newQuery("SELECT COUNT(*) AS count FROM wallet_transactions WHERE wallet = {:wallet}").bind({ wallet: wallet.id }).one(total)
+  const items = $app.findRecordsByFilter("wallet_transactions", "wallet = {:wallet}", "-created", perPage, start, { wallet: wallet.id })
+  return c.json(200, { page, perPage, totalItems: Number(total.count) || 0, items: items.map((item) => item.publicExport()) })
 })
 
 routerAdd("POST", "/api/admin/wallets/adjust", (c) => {
@@ -906,10 +910,12 @@ routerAdd("GET", "/api/wallet/topups", (c) => {
   const query = info.query || {}
   const page = Math.max(1, Number(query.page || 1))
   const perPage = Math.min(50, Math.max(1, Number(query.perPage || 20)))
-  const records = $app.findRecordsByFilter("wallet_topup_requests", "user = {:user} && store = {:store} && status != 'expired'", "-created", -1, 0, { user: auth.id, store })
   const toJson = (record) => ({ id: record.id, store: record.get("store"), user: record.get("user"), username: auth.get("username") || "", fullname: auth.get("fullname") || "", amount: Number(record.get("amount")) || 0, status: record.get("status") || "pending", transferCode: record.get("transfer_code") || "", proof: record.get("proof") || "", note: record.get("note") || "", reviewedBy: record.get("reviewed_by") || "", reviewedAt: record.get("reviewed_at") || "", rejectionReason: record.get("rejection_reason") || "", gatewayTransactionId: record.get("gateway_transaction_id") || "", idempotencyKey: record.get("idempotency_key") || "", created: record.get("created"), updated: record.get("updated") })
   const start = (page - 1) * perPage
-  return c.json(200, { page, perPage, totalItems: records.length, items: records.slice(start, start + perPage).map(toJson) })
+  const total = new DynamicModel({ count: 0 })
+  $app.db().newQuery("SELECT COUNT(*) AS count FROM wallet_topup_requests WHERE user = {:user} AND store = {:store} AND status != 'expired'").bind({ user: auth.id, store }).one(total)
+  const records = $app.findRecordsByFilter("wallet_topup_requests", "user = {:user} && store = {:store} && status != 'expired'", "-created", perPage, start, { user: auth.id, store })
+  return c.json(200, { page, perPage, totalItems: Number(total.count) || 0, items: records.map(toJson) })
 })
 
 routerAdd("POST", "/api/wallet/topups/{topupId}/cancel", (c) => {

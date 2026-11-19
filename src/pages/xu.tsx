@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Icon, Page, Sheet, Spinner, Text, useSnackbar } from "zmp-ui";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -22,6 +22,8 @@ export default function XuPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { openSnackbar } = useSnackbar();
+  const openSnackbarRef = useRef(openSnackbar);
+  openSnackbarRef.current = openSnackbar;
   const [summary, setSummary] = useState<(XuSummary & { checkedInToday?: boolean; weeklyCheckinCount?: number }) | null>(null);
   const [transactions, setTransactions] = useState<XuTransaction[]>([]);
   const [referral, setReferral] = useState<XuReferralSummary | null>(null);
@@ -53,8 +55,8 @@ export default function XuPage() {
       navigate("/login", { replace: true });
       return;
     }
-    load().catch((error) => openSnackbar({ text: messageFrom(error), type: "error", position: "top" })).finally(() => setLoading(false));
-  }, [authLoading, isAuthenticated, load, navigate, openSnackbar]);
+    load().catch((error) => openSnackbarRef.current({ text: messageFrom(error), type: "error", position: "top" })).finally(() => setLoading(false));
+  }, [authLoading, isAuthenticated, load, navigate]);
 
   const checkin = async () => {
     setCheckingIn(true);

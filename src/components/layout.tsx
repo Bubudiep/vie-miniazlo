@@ -1,35 +1,37 @@
+import { lazy, Suspense } from "react";
 import { SnackbarProvider } from "zmp-ui";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
-import HomePage from "@/pages/index";
 import TabBar from "./taskbar";
-import AccountPage from "@/pages/account";
-import PlayingPage from "@/pages/playing";
-import TablesPage from "@/pages/tables";
-import LoginPage from "@/pages/login";
-import WalletPage from "@/pages/wallet";
-import AdminWalletsPage from "@/pages/admin-wallets";
-import AdminWalletTopupsPage from "@/pages/admin-wallet-topups";
-import AdminWalletSpinPage from "@/pages/admin-wallet-spin";
-import AdminWalletPromoSettingsPage from "@/pages/admin-wallet-promo-settings";
-import AdminRegistrationPage from "@/pages/admin-registration";
-import AdminStaffPage from "@/pages/admin-staff";
-import AdminAttendancePage from "@/pages/admin-attendance";
-import AdminProductsPage from "@/pages/admin-products";
-import AdminBillHistoryPage from "@/pages/admin-bill-history";
-import AdminReportsPage from "@/pages/admin-reports";
-import XuPage from "@/pages/xu";
-import AdminXuPage from "@/pages/admin-xu";
-import AdminPromotionsPage from "@/pages/admin-promotions";
-import AdminCustomerSegmentsPage from "@/pages/admin-customer-segments";
-import AdminDashboardPage from "@/pages/admin-dashboard";
-import AdminInventoryPage from "@/pages/admin-inventory";
-import AdminInventorySettingsPage from "@/pages/admin-inventory-settings";
-import AdminSettingsPage from "@/pages/admin-settings";
-import StaffQueuePage from "@/pages/staff-queue";
-import PublicBillPage from "@/pages/public-bill";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { StaffQueueProvider } from "@/contexts/StaffQueueContext";
+
+const HomePage = lazy(() => import("@/pages/index"));
+const AccountPage = lazy(() => import("@/pages/account"));
+const PlayingPage = lazy(() => import("@/pages/playing"));
+const TablesPage = lazy(() => import("@/pages/tables"));
+const LoginPage = lazy(() => import("@/pages/login"));
+const WalletPage = lazy(() => import("@/pages/wallet"));
+const AdminWalletsPage = lazy(() => import("@/pages/admin-wallets"));
+const AdminWalletTopupsPage = lazy(() => import("@/pages/admin-wallet-topups"));
+const AdminWalletSpinPage = lazy(() => import("@/pages/admin-wallet-spin"));
+const AdminWalletPromoSettingsPage = lazy(() => import("@/pages/admin-wallet-promo-settings"));
+const AdminRegistrationPage = lazy(() => import("@/pages/admin-registration"));
+const AdminStaffPage = lazy(() => import("@/pages/admin-staff"));
+const AdminAttendancePage = lazy(() => import("@/pages/admin-attendance"));
+const AdminProductsPage = lazy(() => import("@/pages/admin-products"));
+const AdminBillHistoryPage = lazy(() => import("@/pages/admin-bill-history"));
+const AdminReportsPage = lazy(() => import("@/pages/admin-reports"));
+const XuPage = lazy(() => import("@/pages/xu"));
+const AdminXuPage = lazy(() => import("@/pages/admin-xu"));
+const AdminPromotionsPage = lazy(() => import("@/pages/admin-promotions"));
+const AdminCustomerSegmentsPage = lazy(() => import("@/pages/admin-customer-segments"));
+const AdminDashboardPage = lazy(() => import("@/pages/admin-dashboard"));
+const AdminInventoryPage = lazy(() => import("@/pages/admin-inventory"));
+const AdminInventorySettingsPage = lazy(() => import("@/pages/admin-inventory-settings"));
+const AdminSettingsPage = lazy(() => import("@/pages/admin-settings"));
+const StaffQueuePage = lazy(() => import("@/pages/staff-queue"));
+const PublicBillPage = lazy(() => import("@/pages/public-bill"));
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -49,7 +51,8 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
 function AppRoutes() {
   return (
     <>
-      <Routes>
+      <Suspense fallback={<div role="status" className="flex min-h-screen items-center justify-center px-4 text-sm text-slate-600">Đang tải...</div>}>
+        <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/public-tables/:tableId" element={<PublicBillPage />} />
         <Route
@@ -110,7 +113,8 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
-      </Routes>
+        </Routes>
+      </Suspense>
       <TabBar />
     </>
   );

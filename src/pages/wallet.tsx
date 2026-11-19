@@ -53,36 +53,62 @@ export default function WalletPage() {
   const topupAmount = getAmount(topupAmountInput);
 
   useEffect(() => {
+    if (!user?.id) return;
     let active = true;
+    let refreshing = false;
+    let refreshQueued = false;
+    let refreshTimer: number | undefined;
     const refreshWallet = async (initial = false) => {
+      if (refreshing) { refreshQueued = true; return; }
+      refreshing = true;
       try {
-        const [summary, history, topupHistory, spins, sessions] = await Promise.all([walletService.getMine(), walletService.getMyTransactions(), walletService.getMyTopups(), walletService.getSpins(), walletService.getSpinSessions()]);
-        if (!active) return;
-        setWallet(summary);
-        setTransactions(history.items);
-        setHistoryTotal(history.totalItems);
-        setTopups(topupHistory.items);
-        setSpinData(spins);
-        if (sessions[0]) setActiveSpin({ id: sessions[0].id });
-        setTopup((current) => topupHistory.items.find((item) => item.id === current?.id) || current);
+        do {
+          refreshQueued = false;
+          const [summary, history, topupHistory, spins, sessions] = await Promise.all([walletService.getMine(), walletService.getMyTransactions(), walletService.getMyTopups(), walletService.getSpins(), walletService.getSpinSessions()]);
+          if (!active) return;
+          setWallet(summary);
+          setTransactions(history.items);
+          setHistoryPage(1);
+          setHistoryTotal(history.totalItems);
+          setTopups(topupHistory.items);
+          setSpinData(spins);
+          setActiveSpin(sessions[0] ? { id: sessions[0].id } : null);
+          setTopup((current) => topupHistory.items.find((item) => item.id === current?.id) || current);
+        } while (refreshQueued && active);
       } catch {
         if (initial && active) setError("Không thể tải thông tin ví. Vui lòng thử lại.");
       } finally {
+        refreshing = false;
         if (initial && active) setLoading(false);
       }
+    };
+    const scheduleRefresh = () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => void refreshWallet(), 250);
     };
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") void refreshWallet();
     };
     void refreshWallet(true);
-    const timer = window.setInterval(refreshWhenVisible, 5000);
+    const walletSubscription = pb.collection("wallets").subscribe("*", ({ record }) => {
+      if (record.user === user.id) scheduleRefresh();
+    });
+    const transactionSubscription = pb.collection("wallet_transactions").subscribe("*", ({ record }) => {
+      if (record.user === user.id) scheduleRefresh();
+    });
+    void walletSubscription.catch((subscriptionError) => console.warn("Không thể theo dõi số dư ví realtime:", subscriptionError));
+    void transactionSubscription.catch((subscriptionError) => console.warn("Không thể theo dõi giao dịch ví realtime:", subscriptionError));
+    const timer = window.setInterval(refreshWhenVisible, 60000);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
       active = false;
+      if (refreshTimer) window.clearTimeout(refreshTimer);
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
+      void walletSubscription.then((unsubscribe) => unsubscribe()).catch(() => {});
+      void transactionSubscription.then((unsubscribe) => unsubscribe()).catch(() => {});
     };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;

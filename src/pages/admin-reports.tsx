@@ -96,10 +96,10 @@ export default function AdminReportsPage() {
     setExporting(true);
     try {
       if (from > to) throw new Error("Thời điểm bắt đầu không được sau thời điểm kết thúc");
-      let result = await tableBillHistoryService.report({ from: fromVietnamDateTimeInput(from), to: fromVietnamDateTimeInput(to), tableName: tableName.trim(), productName: productName.trim(), paymentMethod, accountId, category, page: 1 });
+      let result = await tableBillHistoryService.report({ from: fromVietnamDateTimeInput(from), to: fromVietnamDateTimeInput(to), tableName: tableName.trim(), productName: productName.trim(), paymentMethod, accountId, category, page: 1, pageSize: 5000 });
       const payments = [...result.payments];
       while (result.hasMore) {
-        result = await tableBillHistoryService.report({ from: fromVietnamDateTimeInput(from), to: fromVietnamDateTimeInput(to), tableName: tableName.trim(), productName: productName.trim(), paymentMethod, accountId, category, page: result.page + 1 });
+        result = await tableBillHistoryService.report({ from: fromVietnamDateTimeInput(from), to: fromVietnamDateTimeInput(to), tableName: tableName.trim(), productName: productName.trim(), paymentMethod, accountId, category, page: result.page + 1, pageSize: 5000 });
         payments.push(...result.payments);
       }
       downloadWorkbook([

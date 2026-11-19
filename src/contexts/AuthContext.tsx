@@ -2,7 +2,10 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { getTokenPayload } from 'pocketbase';
 import pb from '@/api/pocketbase';
 import type { User } from '@/api/pocketbase';
+import { readSessionCache, writeSessionCache } from '@/utils/session-cache';
 import { isValidUsername, normalizeUsername } from '@/utils/username';
+
+const STORES_CACHE_KEY = 'billiard:stores:v1';
 
 interface AuthContextType {
   user: User | null;
@@ -82,16 +85,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setStoreNameStatus('loading');
 
+    const cachedStores = readSessionCache<{ id: string; name: string }[]>(STORES_CACHE_KEY, 60 * 60 * 1000);
+    if (cachedStores) {
+      setStoreName(cachedStores.find((store) => store.id === storeId)?.name ?? null);
+      setStoreNameStatus('ready');
+    }
+
     pb.send<{ id: string; name: string }[]>('/api/registration/stores', { method: 'GET' })
       .then((stores) => {
         if (!active) return;
+        writeSessionCache(STORES_CACHE_KEY, stores);
         setStoreName(stores.find((store) => store.id === storeId)?.name ?? null);
         setStoreNameStatus('ready');
       })
       .catch((err) => {
         if (!active) return;
         console.warn('Failed to load store name:', err);
-        setStoreNameStatus('error');
+        if (!cachedStores) setStoreNameStatus('error');
       });
 
     return () => { active = false; };

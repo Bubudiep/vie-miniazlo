@@ -9,6 +9,7 @@ import pb, { type BillPaymentSettings, type Promotion, type PromotionSnapshot, t
 import { useAuth } from "@/contexts/AuthContext";
 import { openBillPrint } from "@/components/bill-print";
 import { formatDuration, formatMoneyInput, formatVietnamDateTime, fromVietnamDateTimeInput, handleMoneyInput, toVietnamDateTimeInput } from "@/utils/format";
+import { readSessionCache, writeSessionCache } from "@/utils/session-cache";
 
 const money = (value: number) => `${Math.round(Number(value || 0)).toLocaleString("vi-VN")}đ`;
 const quantityText = (value: number, unit: TableBill["items"][number]["billingUnit"]) => unit === "quantity" ? String(Math.round(value)) : Number(value).toLocaleString("vi-VN", { maximumFractionDigits: 2 });
@@ -28,17 +29,6 @@ const promotionConditions = (promotion: PromotionSnapshot) => {
   return conditions.join(" · ");
 };
 const promotionValue = (promotion: Promotion) => promotion.promotionType === "percent" ? `${promotion.value}%` : promotion.promotionType === "fixed_price" ? `Đồng giá ${money(promotion.value)}` : money(promotion.value);
-const sequentialTableName = async (bill: TableBill) => {
-  const fallbackName = /^Bàn \d+$/.test(bill.tableName) ? bill.tableName : "Bàn";
-  try {
-    const tableMap = await tableService.getMap();
-    const tables = [...tableMap.tables].sort((a, b) => a.row_number - b.row_number || a.position - b.position || a.name.localeCompare(b.name, "vi"));
-    const index = tables.findIndex((table) => table.id === bill.table);
-    return { ...bill, tableName: index >= 0 ? (tables[index].name || `Bàn ${index + 1}`) : fallbackName };
-  } catch {
-    return { ...bill, tableName: fallbackName };
-  }
-};
 export default function PlayingPage() {
   const { tableId, billId } = useParams<{ tableId?: string; billId?: string }>();
   const [searchParams] = useSearchParams();
@@ -102,7 +92,7 @@ export default function PlayingPage() {
   const loadBill = async () => {
     try {
       const response = billId ? await tableBillingService.getDetail(billId) : tableId ? await tableBillingService.getByTable(tableId) : null;
-      const result = response ? await sequentialTableName(response) : null;
+      const result = response;
       if (!result) { navigate("/", { replace: true }); return; }
       setBill(result);
       setQuantityDraft(draftsFor(result.items));
@@ -152,10 +142,21 @@ export default function PlayingPage() {
   }, [bill]);
 
   useEffect(() => {
-    if (activeTab !== "menu" || products.length) return;
-    setProductsLoading(true);
-    tableBillingService.getProducts().then((result) => setProducts(result.items)).catch((error) => openSnackbar({ text: errorMessage(error), type: "error" })).finally(() => setProductsLoading(false));
-  }, [activeTab, products.length]);
+    if (activeTab !== "menu" || !user?.store) return;
+    let active = true;
+    const cacheKey = `billiard:products:${user.store}:v1`;
+    const cachedProducts = readSessionCache<TableBillProduct[]>(cacheKey, 5 * 60 * 1000);
+    if (cachedProducts) setProducts(cachedProducts);
+    setProductsLoading(!cachedProducts);
+    tableBillingService.getProducts().then((result) => {
+      if (!active) return;
+      writeSessionCache(cacheKey, result.items);
+      setProducts(result.items);
+    }).catch((error) => {
+      if (active && !cachedProducts) openSnackbar({ text: errorMessage(error), type: "error" });
+    }).finally(() => { if (active) setProductsLoading(false); });
+    return () => { active = false; };
+  }, [activeTab, user?.store]);
 
   useEffect(() => {
     if (!bill?.id || !paymentSheetOpen || !["open", "stopped"].includes(bill.status) || bill.paymentRequested) return;
@@ -263,7 +264,7 @@ export default function PlayingPage() {
   const refresh = async () => {
     if (!bill) return;
     try {
-      const result = await sequentialTableName(await tableBillingService.getDetail(bill.id));
+      const result = await tableBillingService.getDetail(bill.id);
       setBill(result);
       setQuantityDraft(draftsFor(result.items));
     } catch {
@@ -467,7 +468,7 @@ export default function PlayingPage() {
       setOperationsOpen(false);
       setMergeOpen(false);
       setMergeTargetId("");
-      setBill(await sequentialTableName(result.bill));
+      setBill(result.bill);
       openSnackbar({ text: "Đã gộp bill thành công", type: "success" });
     } catch (error) {
       openSnackbar({ text: errorMessage(error), type: "error" });

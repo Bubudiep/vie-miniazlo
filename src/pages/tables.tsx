@@ -4,9 +4,11 @@ import { useNavigate } from "react-router-dom";
 import { IoQrCodeOutline } from "react-icons/io5";
 
 import { adminNotificationService, tableService, tableBillingService } from "@/api/services";
-import type { Table, TableBillCustomer, TableCanvasPosition, TableMap } from "@/api/pocketbase";
+import pb, { type Table, type TableBillCustomer, type TableCanvasPosition, type TableMap } from "@/api/pocketbase";
 import { useAuth } from "@/contexts/AuthContext";
+import { useStaffQueue } from "@/contexts/StaffQueueContext";
 import StoreHeader from "@/components/store-header";
+import { debounce } from "@/utils/debounce";
 import { formatElapsedClock } from "@/utils/format";
 
 const CARD_WIDTH = 124;
@@ -107,8 +109,18 @@ function arrangeQuickly(tables: Table[], tablesPerRow: number, order: NumberingO
     : { x: Math.floor(index / rows), y: index % rows }]));
 }
 
+function ElapsedClock({ startedAt, className = "" }: { startedAt: string; className?: string }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((tick) => tick + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
+  return <span className={className}>{formatElapsedClock(startedAt)}</span>;
+}
+
 export default function TablesPage() {
   const { storeId, user } = useAuth();
+  const { revision } = useStaffQueue();
   const isAdmin = user?.role === "admin";
   const canArrangeTables = isAdmin || user?.role === "staff";
   const navigate = useNavigate();
@@ -146,13 +158,16 @@ export default function TablesPage() {
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [customers, setCustomers] = useState<TableBillCustomer[]>([]);
   const [busy, setBusy] = useState(false);
-  const [, setClockTick] = useState(0);
-  const [seenNotifications, setSeenNotifications] = useState<string[]>([]);
+  const seenNotificationsRef = useRef(new Set<string>());
+  const openSnackbarRef = useRef(openSnackbar);
+  const queueRevisionRef = useRef(revision);
   const viewportRef = useRef<HTMLDivElement>(null);
   const pointersRef = useRef(new Map<number, CanvasPointer>());
   const dragRef = useRef<DragState | null>(null);
   const panStartRef = useRef<{ pointer: CanvasPointer; pan: CanvasPointer } | null>(null);
   const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
+
+  useEffect(() => { openSnackbarRef.current = openSnackbar; }, [openSnackbar]);
 
   const loadTables = async () => {
     if (!storeId) {
@@ -173,24 +188,52 @@ export default function TablesPage() {
   useEffect(() => { void loadTables(); }, [storeId]);
   useEffect(() => {
     if (!storeId || editingLayout) return;
-    const timer = window.setInterval(() => { if (document.visibilityState === "visible") tableService.getMap().then(setTableMap).catch(() => {}); }, 15000);
-    return () => window.clearInterval(timer);
+    let active = true;
+    const refresh = () => tableService.getMap().then((map) => { if (active) setTableMap(map); }).catch(() => {});
+    const scheduleRefresh = debounce(refresh, 250);
+    const refreshWhenVisible = () => { if (document.visibilityState === "visible") void refresh(); };
+    const tablesSubscription = pb.collection("tables").subscribe("*", ({ record }) => { if (record.store === storeId) scheduleRefresh(); });
+    const layoutsSubscription = pb.collection("table_layouts").subscribe("*", ({ record }) => { if (record.store === storeId) scheduleRefresh(); });
+    const timer = window.setInterval(refreshWhenVisible, 60000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      active = false;
+      scheduleRefresh.cancel();
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      void tablesSubscription.then((unsubscribe) => unsubscribe()).catch(() => {});
+      void layoutsSubscription.then((unsubscribe) => unsubscribe()).catch(() => {});
+    };
   }, [storeId, editingLayout]);
   useEffect(() => {
-    if (!isAdmin) return;
+    if (queueRevisionRef.current === revision) return;
+    queueRevisionRef.current = revision;
+    if (storeId && !editingLayout) tableService.getMap().then(setTableMap).catch(() => {});
+  }, [revision, storeId, editingLayout]);
+  useEffect(() => {
+    if (!isAdmin || !user?.id || !storeId) return;
     let active = true;
     const loadNotifications = () => adminNotificationService.list().then((result) => {
       if (!active) return;
-      const unseen = result.items.filter((item) => !seenNotifications.includes(item.id));
+      const unseen = result.items.filter((item) => !seenNotificationsRef.current.has(item.id));
       if (unseen.length) {
-        unseen.forEach((item) => openSnackbar({ text: `${item.title}: ${item.body}`, type: "warning", position: "top" }));
-        setSeenNotifications((current) => [...current, ...unseen.map((item) => item.id)]);
+        unseen.forEach((item) => {
+          seenNotificationsRef.current.add(item.id);
+          openSnackbarRef.current({ text: `${item.title}: ${item.body}`, type: "warning", position: "top" });
+        });
       }
     }).catch(() => {});
     void loadNotifications();
-    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadNotifications(); }, 15000);
-    return () => { active = false; window.clearInterval(timer); };
-  }, [isAdmin, seenNotifications, openSnackbar]);
+    const subscription = pb.collection("admin_notifications").subscribe("*", ({ record }) => {
+      if (record.store === storeId && record.recipient === user.id) void loadNotifications();
+    });
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadNotifications(); }, 60000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      void subscription.then((unsubscribe) => unsubscribe()).catch(() => {});
+    };
+  }, [isAdmin, user?.id, storeId]);
   useEffect(() => { if (settingsOpen && tableMap) setTotalTablesDraft(String(tableMap.tables.length)); }, [settingsOpen, tableMap?.tables.length]);
   useEffect(() => {
     if (!tableSheetOpen || !isAdmin) return;
@@ -210,17 +253,11 @@ export default function TablesPage() {
     const query = normalizeSearch(customerQuery.trim());
     return query ? customers.filter((customer) => normalizeSearch(`${customer.fullname || ""} ${customer.username || ""}`).includes(query)) : customers;
   }, [customers, customerQuery]);
-  const hasPlayingTables = tableMap?.tables.some((table) => Boolean(table.playingSince)) || false;
   const maxX = Math.max(3, ...Object.values(activePositions).map((position) => position.x));
   const maxY = Math.max(2, ...Object.values(activePositions).map((position) => position.y));
   const canvasWidth = Math.max(MIN_PLAN_WIDTH, PLAN_PADDING * 2 + (maxX + 1) * CARD_WIDTH + maxX * GRID_GAP);
   const canvasHeight = Math.max(MIN_PLAN_HEIGHT, PLAN_PADDING * 2 + (maxY + 1) * CARD_HEIGHT + maxY * GRID_GAP);
   const layoutDirty = editingLayout && !equalPositions(draftPositions, layoutSnapshot);
-  useEffect(() => {
-    if (!hasPlayingTables) return;
-    const timer = window.setInterval(() => setClockTick((tick) => tick + 1), 1000);
-    return () => window.clearInterval(timer);
-  }, [hasPlayingTables]);
 
   const tableLabel = (table: Table | undefined | null) => table?.name?.trim() || `Bàn ${table ? tableNumbers.get(table.id) || "" : ""}`.trim();
   const publicTableUrl = publicQrTable ? `${window.location.origin}/public-tables/${encodeURIComponent(publicQrTable.id)}` : "";
@@ -385,12 +422,12 @@ export default function TablesPage() {
     <StoreHeader onSettings={() => setSettingsOpen(true)} />
     <main className="mx-auto w-full max-w-5xl space-y-4 px-4 py-4">
       <header className="flex items-end justify-between gap-3"><div><Text.Title size="small" className="text-slate-900">Sơ đồ bàn</Text.Title><Text size="xSmall" className="mt-1 text-slate-500">{tableMap?.tables.length || 0} bàn</Text></div><div className="flex items-center gap-2">{canArrangeTables && <button onClick={editingLayout ? closeLayoutEdit : () => { setQuickSetupOpen(false); setSortSheetOpen(true); }} className={`flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-semibold ${editingLayout ? "border border-rose-300 bg-white text-rose-700" : "bg-emerald-700 text-white"}`}><Icon icon={editingLayout ? "zi-close" : "zi-drag-indicator-solid"} />{editingLayout ? "Hủy" : "Sắp xếp"}</button>}</div></header>
-      {!editingLayout && Boolean(tableMap?.tables.length) && <div className="relative"><label className="relative block"><span className="sr-only">Tìm số bàn</span><Icon icon="zi-search" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" name="table-search" value={tableSearch} onChange={(event) => setTableSearch(event.target.value)} placeholder="Tìm số bàn" autoComplete="new-password" autoCorrect="off" autoCapitalize="none" spellCheck={false} enterKeyHint="search" className="min-h-11 w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-base text-slate-900 placeholder:text-slate-400" /></label>{tableSearch.trim() && <div role="listbox" aria-label="Kết quả tìm bàn" className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">{searchResults.length ? searchResults.map((table) => { const bill = openBillFor(table.id); const config = STATUS[table.status] || STATUS.reserved; const disabled = !isAdmin && !bill && table.status !== "available"; return <button key={table.id} type="button" role="option" aria-selected="false" disabled={disabled} onClick={() => { openTable(table); setTableSearch(""); }} className="flex min-h-12 w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 disabled:cursor-default disabled:opacity-60"><span className="min-w-0 truncate text-sm font-semibold text-slate-900">{tableLabel(table)}</span><span className="flex shrink-0 items-center gap-2 text-xs text-slate-600"><span className={`h-2 w-2 rounded-full ${config.dot}`} />{config.label}{table.status === "occupied" && table.playingSince ? ` · ${formatElapsedClock(table.playingSince)}` : ""}</span></button>; }) : <p className="px-3 py-3 text-sm text-slate-500">Không tìm thấy bàn phù hợp</p>}</div>}</div>}
+      {!editingLayout && Boolean(tableMap?.tables.length) && <div className="relative"><label className="relative block"><span className="sr-only">Tìm số bàn</span><Icon icon="zi-search" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" name="table-search" value={tableSearch} onChange={(event) => setTableSearch(event.target.value)} placeholder="Tìm số bàn" autoComplete="new-password" autoCorrect="off" autoCapitalize="none" spellCheck={false} enterKeyHint="search" className="min-h-11 w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-base text-slate-900 placeholder:text-slate-400" /></label>{tableSearch.trim() && <div role="listbox" aria-label="Kết quả tìm bàn" className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">{searchResults.length ? searchResults.map((table) => { const bill = openBillFor(table.id); const config = STATUS[table.status] || STATUS.reserved; const disabled = !isAdmin && !bill && table.status !== "available"; return <button key={table.id} type="button" role="option" aria-selected="false" disabled={disabled} onClick={() => { openTable(table); setTableSearch(""); }} className="flex min-h-12 w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 disabled:cursor-default disabled:opacity-60"><span className="min-w-0 truncate text-sm font-semibold text-slate-900">{tableLabel(table)}</span><span className="flex shrink-0 items-center gap-2 text-xs text-slate-600"><span className={`h-2 w-2 rounded-full ${config.dot}`} />{config.label}{table.status === "occupied" && table.playingSince && <> · <ElapsedClock startedAt={table.playingSince} /></>}</span></button>; }) : <p className="px-3 py-3 text-sm text-slate-500">Không tìm thấy bàn phù hợp</p>}</div>}</div>}
       {editingLayout && <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3"><Text size="small" className="text-emerald-900">{layoutEditMode === "manual" ? "Thủ công: kéo biểu tượng trên card để đặt bàn. Vuốt vùng trống để xem sơ đồ; chụm hai ngón để phóng to." : "Nhanh: kiểm tra bố cục đã xếp. Bạn vẫn có thể kéo từng bàn để chỉnh trước khi lưu."}</Text><button disabled={layoutSaving} onClick={() => void saveLayout()} className="min-h-10 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-60">{layoutSaving ? "Đang lưu..." : "Lưu bố cục"}</button></section>}
       {!tableMap?.tables.length ? <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-10 text-center"><Text className="text-slate-600">Chưa có bàn trong sơ đồ</Text>{isAdmin && <button onClick={() => setSettingsOpen(true)} className="mt-4 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white">Thêm bàn</button>}</div> : <div ref={viewportRef} onPointerDown={onCanvasPointerDown} onPointerMove={onCanvasPointerMove} onPointerUp={finishPointer} onPointerCancel={finishPointer} className={`relative rounded-lg border border-slate-200 bg-white shadow-sm ${editingLayout ? "h-[min(68vh,660px)] touch-none overflow-hidden" : "min-h-[440px] min-h-[calc(100dvh-260px)] overflow-x-auto"}`}><div className="relative" style={{ width: canvasWidth, height: canvasHeight, transform: editingLayout ? `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` : undefined, transformOrigin: "top left" }}>{sortedTables.map((table) => {
         const position = activePositions[table.id]; const config = STATUS[table.status] || STATUS.reserved;
         if (!position) return null;
-        return <div key={table.id} role={editingLayout ? undefined : "button"} tabIndex={editingLayout ? undefined : 0} aria-label={editingLayout ? undefined : `Mở ${tableLabel(table)}`} onClick={() => { if (!editingLayout) openTable(table); }} onKeyDown={(event) => { if (!editingLayout && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); openTable(table); } }} className={`absolute flex h-[84px] w-[124px] flex-col rounded-lg border-2 p-2 text-left shadow-sm ${config.card} ${editingLayout ? "" : "cursor-pointer"}`} style={{ left: PLAN_PADDING + position.x * (CARD_WIDTH + GRID_GAP), top: PLAN_PADDING + position.y * (CARD_HEIGHT + GRID_GAP) }}><div className="flex items-start justify-between gap-1"><span className="min-w-0 flex-1 text-xs font-semibold">{tableLabel(table)}</span>{editingLayout ? <button type="button" aria-label={`Kéo ${tableLabel(table)}`} title="Kéo để di chuyển" onPointerDown={(event) => beginDrag(event, table.id)} className="-mr-1 -mt-1 flex h-7 w-7 shrink-0 touch-none items-center justify-center rounded-md bg-white/80 text-slate-700"><Icon icon="zi-drag-indicator-solid" /></button> : <div className="flex shrink-0 items-center gap-1"><button type="button" aria-label={`Mã QR cố định ${tableLabel(table)}`} title="Mở QR xem bill của bàn" onClick={(event) => { event.stopPropagation(); setPublicQrTable(table); }} onKeyDown={(event) => event.stopPropagation()} className="flex h-6 w-6 items-center justify-center rounded-md bg-white/80 text-slate-700"><IoQrCodeOutline size={16} /></button><span className={`mt-1 h-2.5 w-2.5 rounded-full ${config.dot}`} /></div>}</div><div className="mt-auto"><span className="text-xs font-medium">{config.label}</span>{table.status === "occupied" && table.playingSince && <span className="block text-xs font-semibold tabular-nums">{formatElapsedClock(table.playingSince)}</span>}</div></div>;
+        return <div key={table.id} role={editingLayout ? undefined : "button"} tabIndex={editingLayout ? undefined : 0} aria-label={editingLayout ? undefined : `Mở ${tableLabel(table)}`} onClick={() => { if (!editingLayout) openTable(table); }} onKeyDown={(event) => { if (!editingLayout && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); openTable(table); } }} className={`absolute flex h-[84px] w-[124px] flex-col rounded-lg border-2 p-2 text-left shadow-sm ${config.card} ${editingLayout ? "" : "cursor-pointer"}`} style={{ left: PLAN_PADDING + position.x * (CARD_WIDTH + GRID_GAP), top: PLAN_PADDING + position.y * (CARD_HEIGHT + GRID_GAP) }}><div className="flex items-start justify-between gap-1"><span className="min-w-0 flex-1 text-xs font-semibold">{tableLabel(table)}</span>{editingLayout ? <button type="button" aria-label={`Kéo ${tableLabel(table)}`} title="Kéo để di chuyển" onPointerDown={(event) => beginDrag(event, table.id)} className="-mr-1 -mt-1 flex h-7 w-7 shrink-0 touch-none items-center justify-center rounded-md bg-white/80 text-slate-700"><Icon icon="zi-drag-indicator-solid" /></button> : <div className="flex shrink-0 items-center gap-1"><button type="button" aria-label={`Mã QR cố định ${tableLabel(table)}`} title="Mở QR xem bill của bàn" onClick={(event) => { event.stopPropagation(); setPublicQrTable(table); }} onKeyDown={(event) => event.stopPropagation()} className="flex h-6 w-6 items-center justify-center rounded-md bg-white/80 text-slate-700"><IoQrCodeOutline size={16} /></button><span className={`mt-1 h-2.5 w-2.5 rounded-full ${config.dot}`} /></div>}</div><div className="mt-auto"><span className="text-xs font-medium">{config.label}</span>{table.status === "occupied" && table.playingSince && <ElapsedClock startedAt={table.playingSince} className="block text-xs font-semibold tabular-nums" />}</div></div>;
       })}</div></div>}
       {!isAdmin && tableMap?.activeBills.length ? <section className="space-y-2 border-t border-slate-200 pt-4"><Text size="small" className="font-semibold text-slate-800">Hóa đơn của tôi</Text>{tableMap.activeBills.map((bill) => <button key={bill.id} onClick={() => navigate(`/bills/${bill.id}`)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-3 text-left"><span className="text-sm font-medium text-slate-800">{tableLabel(tableMap.tables.find((table) => table.id === bill.table))}</span><span className="text-sm font-semibold text-emerald-700">Xem hóa đơn</span></button>)}</section> : null}
     </main>

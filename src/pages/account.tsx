@@ -4,8 +4,10 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { adminNotificationService, billPaymentService, walletService } from "@/api/services";
 import type { AdminNotification, BillPaymentSettings, WalletSummary } from "@/api/pocketbase";
+import { readSessionCache, writeSessionCache } from "@/utils/session-cache";
 
 type VietQrBank = { code: string; bin: string; name: string; shortName: string; isTransfer: number };
+const VIETQR_BANKS_CACHE_KEY = "billiard:vietqr-banks:v1";
 
 const PAGE_CLASS =
   "flex flex-col bg-white pb-[calc(env(safe-area-inset-bottom,0px)+96px)] dark:bg-black";
@@ -75,7 +77,9 @@ function AccountPage() {
       return;
     }
     let active = true;
-    setBanksLoading(true);
+    const cachedBanks = readSessionCache<VietQrBank[]>(VIETQR_BANKS_CACHE_KEY, 24 * 60 * 60 * 1000);
+    if (cachedBanks) setBanks(cachedBanks);
+    setBanksLoading(!cachedBanks);
     setBanksError("");
     fetch("https://api.vietqr.io/v2/banks").then(async (response) => {
       if (!response.ok) throw new Error("Không thể tải danh sách ngân hàng");
@@ -85,9 +89,12 @@ function AccountPage() {
         .filter((bank) => bank.isTransfer === 1 && /^\d{6}$/.test(String(bank.bin ?? "")) && /ngân hàng|tmcp|\bbank\b/i.test(String(bank.name ?? "").normalize("NFC")))
         .sort((a, b) => String(a.shortName ?? "").localeCompare(String(b.shortName ?? ""), "vi"));
       if (!supportedBanks.length) throw new Error("Danh sách ngân hàng VietQR trống");
-      if (active) setBanks(supportedBanks);
+      if (active) {
+        writeSessionCache(VIETQR_BANKS_CACHE_KEY, supportedBanks);
+        setBanks(supportedBanks);
+      }
     }).catch(() => {
-      if (active) setBanksError("Không tải được danh sách ngân hàng VietQR. Hãy kiểm tra kết nối rồi tải lại trang.");
+      if (active && !cachedBanks) setBanksError("Không tải được danh sách ngân hàng VietQR. Hãy kiểm tra kết nối rồi tải lại trang.");
     }).finally(() => {
       if (active) setBanksLoading(false);
     });

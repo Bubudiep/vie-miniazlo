@@ -213,6 +213,7 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
   const accountId = String(query.accountId || "").trim().slice(0, 40);
   const selectedCategory = String(query.category || "").trim().slice(0, 80);
   const page = Number(query.page || 1);
+  const pageSize = Number(query.pageSize || 50);
   const parseRange = (value, end) => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       const parsed = new Date(`${value}T00:00:00+07:00`);
@@ -234,6 +235,8 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
     throw new BadRequestError("Khoảng thời gian không hợp lệ");
   if (!Number.isSafeInteger(page) || page < 1)
     throw new BadRequestError("Trang báo cáo không hợp lệ");
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 5000)
+    throw new BadRequestError("Số dòng báo cáo không hợp lệ");
   if (paymentMethod && !["cash", "transfer", "wallet"].includes(paymentMethod))
     throw new BadRequestError("Phương thức thanh toán không hợp lệ");
   const fromDb = fromDate.toISOString().replace("T", " ");
@@ -278,6 +281,18 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
   const payments = [];
   const tables = {};
   const products = {};
+  const itemsByBill = {};
+  $app.findRecordsByFilter(
+    "table_bill_items",
+    "store = {:store} && bill.status = 'paid' && bill.paid_at >= {:from} && bill.paid_at < {:to}",
+    "created",
+    -1,
+    0,
+    { store, from: fromDb, to: toDb },
+  ).forEach((item) => {
+    const billId = String(item.get("bill") || "");
+    if (billId) (itemsByBill[billId] ||= []).push(item);
+  });
   let totalRevenue = 0;
   let cashAmount = 0;
   let transferAmount = 0;
@@ -300,17 +315,7 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
     ).toISOString();
     const amount = Math.max(0, Math.round(Number(event.get("amount")) || 0));
     const method = String(event.get("payment_method") || "");
-    let billItems = [];
-    try {
-      billItems = $app.findRecordsByFilter(
-        "table_bill_items",
-        "store = {:store} && bill = {:bill}",
-        "created",
-        -1,
-        0,
-        { store, bill: billId },
-      );
-    } catch (e) {}
+    const billItems = itemsByBill[billId] || [];
     const paidItems = billItems
       .filter(
         (item) =>
@@ -414,7 +419,6 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
       products[key] = product;
     }
   }
-  const pageSize = 50;
   const start = (page - 1) * pageSize;
   return c.json(200, {
     from,

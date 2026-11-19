@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon, Page, Spinner, Text, useSnackbar } from "zmp-ui";
 import { Navigate, useNavigate } from "react-router-dom";
 import { walletService } from "@/api/services";
@@ -15,15 +15,17 @@ export default function AdminWalletPromoSettingsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { openSnackbar } = useSnackbar();
+  const openSnackbarRef = useRef(openSnackbar);
+  openSnackbarRef.current = openSnackbar;
   const [settings, setSettings] = useState<WalletPromoSettings>(emptySettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try { setSettings(await walletService.getPromoSettings()); }
-    catch (error: any) { openSnackbar({ text: error?.response?.data?.error || "Không thể tải thiết lập thưởng nạp", type: "error", position: "top" }); }
+    catch (error: any) { openSnackbarRef.current({ text: error?.response?.data?.error || "Không thể tải thiết lập thưởng nạp", type: "error", position: "top" }); }
     finally { setLoading(false); }
-  }, [openSnackbar]);
+  }, []);
 
   useEffect(() => { if (user?.role === "admin") void load(); }, [user?.role, load]);
   if (user?.role !== "admin") return <Navigate to="/" replace />;

@@ -3,7 +3,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Page, Button, Input, Box, Text } from 'zmp-ui';
 import pb from '@/api/pocketbase';
+import { readSessionCache, writeSessionCache } from '@/utils/session-cache';
 import { normalizeUsername } from '@/utils/username';
+
+const STORES_CACHE_KEY = 'billiard:stores:v1';
 
 function RequiredMark() {
   return (
@@ -29,9 +32,11 @@ export default function LoginPage() {
   const [notice, setNotice] = useState('');
 
   useEffect(() => {
+    const cachedStores = readSessionCache<{ id: string; name: string }[]>(STORES_CACHE_KEY, 60 * 60 * 1000);
+    if (cachedStores) setStores(cachedStores);
     pb.send<{ id: string; name: string }[]>('/api/registration/stores', { method: 'GET' })
-      .then(setStores)
-      .catch(() => setStoreError(true));
+      .then((items) => { writeSessionCache(STORES_CACHE_KEY, items); setStores(items); setStoreError(false); })
+      .catch(() => { if (!cachedStores) setStoreError(true); });
   }, []);
 
   useEffect(() => {

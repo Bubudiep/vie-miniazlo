@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon, Page, Spinner, Text, useSnackbar } from "zmp-ui";
 import { Navigate, useNavigate } from "react-router-dom";
 import { walletService } from "@/api/services";
@@ -15,6 +15,8 @@ export default function AdminWalletSpinPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { openSnackbar } = useSnackbar();
+  const openSnackbarRef = useRef(openSnackbar);
+  openSnackbarRef.current = openSnackbar;
   const [minTopup, setMinTopup] = useState("100000");
   const [prizes, setPrizes] = useState<WalletSpinPrize[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,9 +31,9 @@ export default function AdminWalletSpinPage() {
       setMinTopup(String(settings.minTopup || ""));
       setPrizes(settings.prizes);
     } catch (error: any) {
-      openSnackbar({ text: error?.response?.data?.error || "Không thể tải cấu hình quay số", type: "error", position: "top" });
+      openSnackbarRef.current({ text: error?.response?.data?.error || "Không thể tải cấu hình quay số", type: "error", position: "top" });
     } finally { setLoading(false); }
-  }, [openSnackbar]);
+  }, []);
   useEffect(() => { if (user?.role === "admin") void load(); }, [user?.role, load]);
   const searchUsers = async () => {
     try { setUsers(await walletService.listUsers(query)); }

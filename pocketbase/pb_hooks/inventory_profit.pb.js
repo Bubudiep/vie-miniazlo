@@ -63,6 +63,28 @@ routerUse((c) => {
     const params = { store }
     if (search) { filter += " && name ~ {:search}"; params.search = search }
     const products = $app.findRecordsByFilter("products", filter, "category,name", -1, 0, params)
+    const productNames = {}
+    const namedProducts = search
+      ? $app.findRecordsByFilter("products", "store = {:store}", "category,name", -1, 0, { store })
+      : products
+    namedProducts.forEach((product) => { productNames[product.id] = String(product.get("name") || "Mặt hàng") })
+    const onHandByProduct = {}
+    $app.findRecordsByFilter("inventory_movements", "store = {:store}", "created", -1, 0, { store }).forEach((movement) => {
+      const productId = String(movement.get("product") || "")
+      if (productId) onHandByProduct[productId] = (onHandByProduct[productId] || 0) + (Number(movement.get("quantity_delta")) || 0)
+    })
+    const reservedByProduct = {}
+    $app.findRecordsByFilter(
+      "table_bill_items",
+      "store = {:store} && billing_unit != 'hour' && (bill.status = 'open' || bill.status = 'wallet_pending')",
+      "created",
+      -1,
+      0,
+      { store }
+    ).forEach((item) => {
+      const productId = String(item.get("product") || "")
+      if (productId) reservedByProduct[productId] = (reservedByProduct[productId] || 0) + Math.max(0, Number(item.get("quantity")) || 0)
+    })
     const outputSince = new Date(Date.now() - 10 * 86400000).toISOString()
     const outputByProduct = {}
     const outputDaysByProduct = {}
@@ -77,8 +99,8 @@ routerUse((c) => {
       }
     })
     const items = products.map((product) => {
-      const onHand = productInventory($app, product.id)
-      const reserved = reservedQuantity($app, product.id)
+      const onHand = onHandByProduct[product.id] || 0
+      const reserved = reservedByProduct[product.id] || 0
       return {
         id: product.id,
         name: product.get("name"),
@@ -95,13 +117,15 @@ routerUse((c) => {
       }
     })
     const movements = $app.findRecordsByFilter("inventory_movements", "store = {:store}", "-occurred_at", 100, 0, { store })
+    const actorNames = {}
+    $app.findRecordsByFilter("users", "store = {:store}", "username", -1, 0, { store }).forEach((user) => {
+      actorNames[user.id] = String(user.get("fullname") || user.get("username") || "Hệ thống")
+    })
     return c.json(200, {
       items,
       movements: movements.map((movement) => {
-        let productName = "Mặt hàng"
-        try { productName = $app.findRecordById("products", movement.get("product")).get("name") } catch (e) {}
-        let actorName = "Hệ thống"
-        try { const actor = $app.findRecordById("users", movement.get("actor")); actorName = actor.get("fullname") || actor.get("username") || actorName } catch (e) {}
+        const productName = productNames[String(movement.get("product") || "")] || "Mặt hàng"
+        const actorName = actorNames[String(movement.get("actor") || "")] || "Hệ thống"
         return {
           id: movement.id,
           productId: movement.get("product"),
@@ -197,6 +221,11 @@ routerUse((c) => {
     const fromDb = fromDate.toISOString().replace("T", " ")
     const toDb = toDate.toISOString().replace("T", " ")
     const bills = $app.findRecordsByFilter("table_bills", "store = {:store} && status = 'paid' && paid_at >= {:from} && paid_at < {:to}", "paid_at", -1, 0, { store, from: fromDb, to: toDb })
+    const linesByBill = {}
+    $app.findRecordsByFilter("table_bill_items", "store = {:store} && bill.status = 'paid' && bill.paid_at >= {:from} && bill.paid_at < {:to}", "created", -1, 0, { store, from: fromDb, to: toDb }).forEach((line) => {
+      const billId = String(line.get("bill") || "")
+      if (billId) (linesByBill[billId] ||= []).push(line)
+    })
     const products = {}
     const daily = {}
     const hourly = {}
@@ -204,7 +233,7 @@ routerUse((c) => {
     let goodsCost = 0
     let paidBills = 0
     for (const bill of bills) {
-      const lines = $app.findRecordsByFilter("table_bill_items", "store = {:store} && bill = {:bill}", "created", -1, 0, { store, bill: bill.id })
+      const lines = linesByBill[bill.id] || []
       const gross = lines.reduce((sum, item) => sum + Math.max(0, Number(item.get("line_total")) || 0), 0)
       const paid = Math.max(0, Math.round(Number(bill.get("total_amount")) || 0))
       let allocated = 0
@@ -222,9 +251,7 @@ routerUse((c) => {
         let productId = String(line.get("product") || "")
         let productName = String(line.get("product_name") || "Mặt hàng")
         const unitLabel = String(line.get("unit_label") || "")
-        if (productId) {
-          try { const product = $app.findRecordById("products", productId); productName = product.get("name") || productName } catch (e) {}
-        } else productId = "deleted:" + productName
+        if (!productId) productId = "deleted:" + productName
         const row = products[productId] || { productId, name: productName, unitLabel, outputQuantity: 0, revenue: 0, cost: 0, profit: 0 }
         row.outputQuantity += quantity
         row.revenue += revenue
