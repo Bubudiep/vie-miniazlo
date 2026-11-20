@@ -12,6 +12,7 @@ import {
   RiNewspaperLine,
   RiListCheck2,
   RiListCheck,
+  RiHistoryLine,
 } from "react-icons/ri";
 
 interface TabItem {
@@ -68,6 +69,12 @@ const TabBar = () => {
     icon: <RiListCheck size={28} />,
     activeIcon: <RiListCheck2 size={28} />,
   };
+  const billHistoryTab = {
+    path: "/admin/bill-history",
+    label: "Lịch sử bill",
+    icon: <RiHistoryLine size={28} />,
+    activeIcon: <RiHistoryLine size={28} />,
+  };
   const tabs = useMemo(() => user?.role === "admin"
     ? [...TABS.slice(0, 2), queueTab, {
       path: "/admin",
@@ -75,7 +82,7 @@ const TabBar = () => {
       icon: <RiDashboardLine size={28} />,
       activeIcon: <RiDashboardFill size={28} />,
     }, TABS[2]]
-    : user?.role === "staff" ? [...TABS.slice(0, 2), queueTab, TABS[2]]
+    : user?.role === "staff" ? [...TABS.slice(0, 2), queueTab, billHistoryTab, TABS[2]]
     : TABS, [user?.role]);
 
   const activeIndex = useMemo(() => {

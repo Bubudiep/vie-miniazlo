@@ -19,6 +19,7 @@ const AdminWalletPromoSettingsPage = lazy(() => import("@/pages/admin-wallet-pro
 const AdminRegistrationPage = lazy(() => import("@/pages/admin-registration"));
 const AdminStaffPage = lazy(() => import("@/pages/admin-staff"));
 const AdminAttendancePage = lazy(() => import("@/pages/admin-attendance"));
+const AdminAuditLogsPage = lazy(() => import("@/pages/admin-audit-logs"));
 const AdminProductsPage = lazy(() => import("@/pages/admin-products"));
 const AdminBillHistoryPage = lazy(() => import("@/pages/admin-bill-history"));
 const AdminReportsPage = lazy(() => import("@/pages/admin-reports"));
@@ -91,6 +92,7 @@ function AppRoutes() {
         <Route path="/admin/registration" element={<ProtectedRoute><AdminRegistrationPage /></ProtectedRoute>} />
         <Route path="/admin/staff" element={<ProtectedRoute><AdminStaffPage /></ProtectedRoute>} />
         <Route path="/admin/attendance" element={<ProtectedRoute><AdminAttendancePage /></ProtectedRoute>} />
+        <Route path="/admin/audit-logs" element={<ProtectedRoute><AdminAuditLogsPage /></ProtectedRoute>} />
         <Route path="/admin/products" element={<ProtectedRoute><AdminProductsPage /></ProtectedRoute>} />
         <Route path="/admin/bill-history" element={<ProtectedRoute><AdminBillHistoryPage /></ProtectedRoute>} />
         <Route path="/admin/reports" element={<ProtectedRoute><AdminReportsPage /></ProtectedRoute>} />

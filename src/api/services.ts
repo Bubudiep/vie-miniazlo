@@ -1,4 +1,4 @@
-import pb, { Store, User, Product, ProductInput, ProductCategory, Table, TableLayout, TableMap, TableBill, TableBillSessionSummary, TableBillCustomer, TableBillProduct, TableBillHistoryEvent, TableBillingReport, AdminDashboardReport, InventoryItem, InventoryMovement, InventorySettings, Customer, WalletOrder, WalletSummary, WalletTransactionPage, WalletUser, WalletTopup, WalletTopupCreateResult, WalletTopupPayment, WalletPromoSettings, XuAdminUser, XuCheckinResult, XuRedemption, XuReferralSummary, XuReward, XuSettings, XuSummary, XuTransactionPage, BillPaymentSettings, AdminNotification, Promotion, CustomerSegmentData, StaffAccount, StaffAttendance, StaffQueueItem } from './pocketbase';
+import pb, { Store, User, Product, ProductInput, ProductCategory, Table, TableLayout, TableMap, TableBill, TableBillSessionSummary, TableBillCustomer, TableBillProduct, TableBillHistoryEvent, TableBillingReport, AdminDashboardReport, InventoryItem, InventoryMovement, InventorySettings, Customer, WalletOrder, WalletSummary, WalletTransactionPage, WalletUser, WalletTopup, WalletTopupCreateResult, WalletTopupPayment, WalletPromoSettings, XuAdminUser, XuCheckinResult, XuRedemption, XuReferralSummary, XuReward, XuSettings, XuSummary, XuTransactionPage, BillPaymentSettings, AdminNotification, Promotion, CustomerSegmentData, StaffAccount, StaffAttendance, StaffQueueItem, AuditLog } from './pocketbase';
 
 export const registrationAdminService = {
   get() {
@@ -27,6 +27,14 @@ export const staffAttendanceService = {
   },
   save(input: Omit<StaffAttendance, 'id' | 'staff'> & { staff: string }) {
     return pb.send<StaffAttendance>('/api/admin/attendance', { method: 'POST', body: input });
+  },
+};
+
+export const auditLogService = {
+  async list(input: { from: string; to: string; actor?: string; page?: number; perPage?: number }) {
+    const filters = [`created >= "${input.from.replace(/"/g, "")}"`, `created <= "${input.to.replace(/"/g, "")}"`];
+    if (input.actor) filters.push(`actor = "${input.actor.replace(/"/g, "")}"`);
+    return pb.collection("audit_logs").getList<AuditLog>(input.page || 1, input.perPage || 50, { filter: filters.join(" && "), sort: "-created", expand: "actor" });
   },
 };
 

@@ -155,6 +155,7 @@ export interface TableBillItem {
   unitPrice: number;
   quantity: number;
   startedAt: string;
+  addedAt?: string;
   stoppedAt?: string;
   lineTotal: number;
   queueStatus?: '' | 'pending' | 'done' | 'cancelled' | 'approval_pending' | 'rejected';
@@ -242,6 +243,18 @@ export interface StaffAttendance {
   status: 'present' | 'absent';
   checkIn: string;
   checkOut: string;
+}
+
+export interface AuditLog {
+  id: string;
+  store: string;
+  actor: string;
+  action: string;
+  collection: string;
+  record_id?: string;
+  details?: string;
+  created: string;
+  expand?: { actor?: User };
 }
 
 export interface PromotionSnapshot {

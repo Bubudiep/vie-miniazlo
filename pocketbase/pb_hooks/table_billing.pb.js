@@ -131,6 +131,8 @@ routerAdd("GET", "/api/table-billing/history", (c) => {
     throw new BadRequestError("Trang lịch sử không hợp lệ");
   if (category && !["payment", "action"].includes(category))
     throw new BadRequestError("Loại lịch sử không hợp lệ");
+  if (isStaff && category && category !== "payment")
+    throw new ForbiddenError("Nhân viên chỉ được xem lịch sử thanh toán");
   if (billId) {
     const bill = $app.findRecordById("table_bills", billId);
     if (bill.get("store") !== store)
@@ -142,6 +144,10 @@ routerAdd("GET", "/api/table-billing/history", (c) => {
 
   let filter = "store = {:store} && event_type != 'payment_started'";
   const params = { store };
+  if (isStaff) {
+    filter += " && category = 'payment' && actor_id = {:actor}";
+    params.actor = auth.id;
+  }
   if (billId) {
     filter += " && bill_id = {:bill}";
     params.bill = billId;
@@ -798,6 +804,19 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   const isAdmin = !!auth && auth.get("role") === "admin";
   const isStaff = !!auth && auth.get("role") === "staff";
   const canOperateBill = isAdmin || isStaff;
+  // Custom bill actions save records inside a transaction, so record request hooks cannot see them.
+  if (auth && ["admin", "staff"].includes(String(auth.get("role") || "")) && !["detail", "session_summary", "queue_list", "request_list", "payment_request_list", "public_detail", "get_active_bill"].includes(action)) {
+    try {
+      const audit = new Record($app.findCollectionByNameOrId("audit_logs"));
+      audit.set("store", store);
+      audit.set("actor", auth.id);
+      audit.set("action", action);
+      audit.set("collection", "table_billing");
+      audit.set("record_id", String(input.billId || input.itemId || input.tableId || ""));
+      audit.set("details", JSON.stringify({ action, billId: input.billId || "", itemId: input.itemId || "", tableId: input.tableId || "" }).slice(0, 5000));
+      $app.save(audit);
+    } catch (error) { console.error("Failed to audit bill action:", error); }
+  }
   const requireAdmin = () => {
     if (!isAdmin) throw new ForbiddenError("Chỉ admin mới được thao tác");
   };
@@ -1872,6 +1891,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
         unitPrice: Number(item.get("unit_price")) || 0,
         quantity: calc.quantity,
         startedAt: item.get("started_at") || "",
+        addedAt: item.get("created") || "",
         stoppedAt: item.get("stopped_at") || "",
         lineTotal: excluded ? 0 : calc.amount,
         queueStatus: item.get("queue_status") || "",

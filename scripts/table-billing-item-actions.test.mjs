@@ -19,7 +19,7 @@ class Record {
 }
 
 // Run the real route with an in-memory transactional store; no live data is used.
-function fixture(role = 'staff', { bill = {}, item = {}, extraItems = [], failHistory = false } = {}) {
+function fixture(role = 'staff', { bill = {}, item = {}, extraItems = [], historyEvents = [], failHistory = false } = {}) {
   let records = [
     new Record('table_bills', 'bill1', { store: 'store1', table: 'table00000000001', customer: 'actor1', status: 'open', ...bill }),
     new Record('table_bill_items', 'item1', { store: 'store1', bill: 'bill1', product_name: 'Nước suối', billing_unit: 'quantity', quantity: 2, unit_price: 10000, line_total: 20000, ...item }),
@@ -28,6 +28,7 @@ function fixture(role = 'staff', { bill = {}, item = {}, extraItems = [], failHi
     new Record('products', 'hourly1', { store: 'store1', name: 'Bàn bida', kind: 'service', billing_unit: 'hour', unit_label: 'giờ', price: 60000, is_active: true }),
     new Record('tables', 'table00000000002', { store: 'store1', name: 'Bàn 2' }),
     ...extraItems.map(({ id, ...fields }) => new Record('table_bill_items', id, { store: 'store1', bill: 'bill1', product_name: 'Coca', billing_unit: 'quantity', quantity: 1, unit_price: 10000, line_total: 10000, ...fields })),
+    ...historyEvents.map(({ id, ...fields }) => new Record('table_bill_events', id, { store: 'store1', bill_id: 'bill1', category: 'payment', event_type: 'payment_completed', ...fields })),
   ];
   const auth = new Record('users', 'actor1', { store: 'store1', role, fullname: 'Nguyễn Văn An' });
   const hooks = new Map();
@@ -54,7 +55,7 @@ function fixture(role = 'staff', { bill = {}, item = {}, extraItems = [], failHi
       return record;
     },
     findRecordsByFilter(collection, filter, sort, limit, offset, params = {}) {
-      return records.filter((row) => row.collection === collection && (!params.bill || row.get('bill') === params.bill) && (!params.store || row.get('store') === params.store) && (!params.table || row.get('table') === params.table) && (collection !== 'products' || (row.get('is_active') === true && row.get('billing_unit') !== 'hour')));
+      return records.filter((row) => row.collection === collection && (!params.bill || row.get(collection === 'table_bill_events' ? 'bill_id' : 'bill') === params.bill) && (!params.store || row.get('store') === params.store) && (!params.table || row.get('table') === params.table) && (!params.category || row.get('category') === params.category) && (!params.actor || row.get('actor_id') === params.actor) && (!filter.includes("category = 'payment'") || row.get('category') === 'payment') && (collection !== 'products' || (row.get('is_active') === true && row.get('billing_unit') !== 'hour')));
     },
     save(record) {
       if (failHistory && record.collection === 'table_bill_events') throw new Error('History unavailable');
@@ -98,11 +99,36 @@ function fixture(role = 'staff', { bill = {}, item = {}, extraItems = [], failHi
         json: (status, body) => ({ status, body }),
       });
     },
+    history(query = {}, requestAuth = auth) {
+      return routes.get('GET /api/table-billing/history')({
+        requestInfo: () => ({ auth: requestAuth, query }),
+        json: (status, body) => ({ status, body }),
+      });
+    },
   };
 }
 
 const events = (state) => state.records().filter((row) => row.collection === 'table_bill_events');
 const details = (state) => JSON.parse(events(state)[0].get('details'));
+
+test('staff history only returns their own payment events, including on a bill query', () => {
+  const state = fixture('staff', { historyEvents: [
+    { id: 'own-payment', actor_id: 'actor1' },
+    { id: 'other-payment', actor_id: 'staff2' },
+    { id: 'own-action', actor_id: 'actor1', category: 'action', event_type: 'item_removed' },
+  ] });
+  assert.deepEqual(state.history({ category: 'payment' }).body.items.map((event) => event.id), ['own-payment']);
+  assert.deepEqual(state.history({ billId: 'bill1' }).body.items.map((event) => event.id), ['own-payment']);
+  assert.throws(() => state.history({ billId: 'bill1', category: 'action' }), /chỉ được xem lịch sử thanh toán/);
+});
+
+test('admins retain store-wide payment history', () => {
+  const state = fixture('admin', { historyEvents: [
+    { id: 'staff1-payment', actor_id: 'actor1' },
+    { id: 'staff2-payment', actor_id: 'staff2' },
+  ] });
+  assert.deepEqual(state.history({ category: 'payment' }).body.items.map((event) => event.id), ['staff1-payment', 'staff2-payment']);
+});
 
 test('approval-pending orders use the requests realtime signal', () => {
   const module = { exports: {} };
@@ -246,7 +272,7 @@ test('public multi-item order rolls back completely when one item is invalid', (
 for (const role of ['admin', 'staff']) {
   test(`${role} quantity changes log old and new values`, () => {
     const state = fixture(role);
-    assert.equal(state.act('update_item', { quantity: 3 }).body.bill.totalAmount, 30000);
+    assert.equal(state.act('update_item', { quantity: 3, ...(role === 'staff' ? { reason: 'Điều chỉnh theo yêu cầu khách' } : {}) }).body.bill.totalAmount, 30000);
     assert.equal(events(state)[0].get('event_type'), 'quantity_changed');
     assert.equal(details(state).oldQuantity, 2);
     assert.equal(details(state).newQuantity, 3);
@@ -257,7 +283,7 @@ for (const role of ['admin', 'staff']) {
   test(`${role} time changes are logged and deletion snapshots current time charges`, () => {
     const state = fixture(role, { item: { billing_unit: 'hour', unit_price: 60000, quantity: 0, line_total: 0, started_at: '2026-01-01T00:00:00Z' } });
     const stoppedAt = '2026-01-01T01:00:00Z';
-    state.act('update_item_time', { startedAt: '2026-01-01T00:00:00Z', stoppedAt });
+    state.act('update_item_time', { startedAt: '2026-01-01T00:00:00Z', stoppedAt, ...(role === 'staff' ? { reason: 'Điều chỉnh theo yêu cầu khách' } : {}) });
     assert.equal(events(state)[0].get('event_type'), 'item_time_changed');
     assert.equal(details(state).newStoppedAt, '2026-01-01T01:00:00.000Z');
     state.act('delete_item', { reason: 'Sửa nhầm giờ' });
