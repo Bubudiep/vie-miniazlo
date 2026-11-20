@@ -179,13 +179,19 @@ test('admin can delete directly without a reason and still gets history', () => 
   assert.equal(details(state).reason, '');
 });
 
-test('staff marking a transfer as unreceived keeps the bill unpaid and clears its pending request', () => {
-  const state = fixture('staff', { bill: { status: 'wallet_pending', payment_method: 'transfer', wallet_requested_at: '2026-11-16T00:00:00.000Z', payment_requester: '', requested_amount: 20000, total_amount: 20000 } });
+test('staff marking a transfer as unreceived resumes the unpaid bill and hourly timer', () => {
+  const state = fixture('staff', {
+    bill: { status: 'wallet_pending', payment_method: 'transfer', wallet_requested_at: '2026-11-16T00:00:00.000Z', payment_requester: '', requested_amount: 20000, total_amount: 20000, stopped_at: '2026-11-16T00:10:00.000Z' },
+    item: { billing_unit: 'hour', started_at: '2026-11-16T00:00:00.000Z', stopped_at: '2026-11-16T00:10:00.000Z' },
+  });
   const result = state.act('payment_request_unreceived');
   const bill = state.records().find((row) => row.collection === 'table_bills');
+  const item = state.records().find((row) => row.collection === 'table_bill_items');
   assert.equal(result.status, 200);
-  assert.equal(bill.get('status'), 'stopped');
+  assert.equal(bill.get('status'), 'open');
   assert.notEqual(bill.get('status'), 'paid');
+  assert.equal(bill.get('stopped_at'), '');
+  assert.equal(item.get('stopped_at'), '');
   assert.equal(bill.get('payment_method'), '');
   assert.equal(bill.get('wallet_requested_at'), '');
   assert.equal(bill.get('requested_amount'), 0);

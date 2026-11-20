@@ -2252,8 +2252,14 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     $app.runInTransaction((txApp) => {
       const bill = findStoreBill(txApp, String(input.billId || ""));
       if (bill.get("status") !== "wallet_pending" || bill.get("payment_method") !== "transfer") throw new BadRequestError("Yêu cầu chuyển khoản đã được xử lý");
-      bill.set("status", "stopped");
-      bill.set("stopped_at", bill.get("stopped_at") || new Date().toISOString());
+      bill.set("status", "open");
+      bill.set("stopped_at", "");
+      billItems(txApp, bill.id).forEach((item) => {
+        if (item.get("billing_unit") === "hour") {
+          item.set("stopped_at", "");
+          txApp.save(item);
+        }
+      });
       bill.set("payment_method", "");
       bill.set("wallet_requested_at", "");
       bill.set("payment_requester", "");
