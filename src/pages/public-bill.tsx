@@ -23,6 +23,7 @@ export default function PublicBillPage() {
   const [bankPickerOpen, setBankPickerOpen] = useState(false);
   const [bankApps, setBankApps] = useState<{ appId: string; appName: string; appLogo?: string }[]>([]);
   const [bankAppsLoading, setBankAppsLoading] = useState(false);
+  const [vietQrBanks, setVietQrBanks] = useState<{ code: string; bin: string }[]>([]);
   const { openSnackbar } = useSnackbar();
 
   const load = () => tableBillingService.getPublicDetail(tableId).then((result) => {
@@ -57,15 +58,24 @@ export default function PublicBillPage() {
 
   const openBankPicker = async () => {
     setBankPickerOpen(true);
-    if (bankApps.length || bankAppsLoading) return;
+    if ((bankApps.length && vietQrBanks.length) || bankAppsLoading) return;
     setBankAppsLoading(true);
     try {
       const isIos = /iPad|iPhone|iPod/.test(window.navigator.userAgent);
-      const response = await fetch(`https://api.vietqr.io/v2/${isIos ? "ios" : "android"}-app-deeplinks`);
-      const data = await response.json() as { apps?: { appId: string; appName: string; appLogo?: string; autofill?: number }[] };
-      const apps = (data.apps || []).filter((app) => app.appId && app.appName && Number(app.autofill) === 1);
+      const [appsResponse, banksResponse] = await Promise.all([
+        fetch(`https://api.vietqr.io/v2/${isIos ? "ios" : "android"}-app-deeplinks`),
+        fetch("https://api.vietqr.io/v2/banks"),
+      ]);
+      const [appsData, banksData] = await Promise.all([
+        appsResponse.json() as Promise<{ apps?: { appId: string; appName: string; appLogo?: string; autofill?: number }[] }>,
+        banksResponse.json() as Promise<{ data?: { code: string; bin: string }[] }>,
+      ]);
+      const apps = (appsData.apps || []).filter((app) => app.appId && app.appName && Number(app.autofill) === 1);
+      const banks = banksData.data || [];
       if (!apps.length) throw new Error("Không có ứng dụng hỗ trợ");
+      if (!banks.length) throw new Error("Không tải được danh sách ngân hàng");
       setBankApps(apps);
+      setVietQrBanks(banks);
     } catch {
       setBankPickerOpen(false);
       openSnackbar({ text: "Không tải được danh sách ứng dụng ngân hàng. Bạn vẫn có thể quét mã QR để thanh toán.", type: "warning", position: "top" });
@@ -75,10 +85,16 @@ export default function PublicBillPage() {
   };
 
   const selectBankApp = (appId: string) => {
+    const transferBankCode = vietQrBanks.find((bank) => bank.bin === payment.bankId)?.code;
+    if (!transferBankCode) {
+      setBankPickerOpen(false);
+      openSnackbar({ text: "Không xác định được mã ngân hàng nhận tiền. Bạn có thể quét mã QR để thanh toán.", type: "warning", position: "top" });
+      return;
+    }
     const amount = Math.round(bill?.requestedAmount || bill?.totalAmount || 0);
     const encode = (value: string) => encodeURIComponent(value).replace(/%20/g, "+");
     const returnUrl = `${window.location.origin}/public-tables/${encodeURIComponent(tableId)}`;
-    const transferUrl = `https://dl.vietqr.io/pay?app=${encode(appId)}&am=${amount}&tn=${encode(`Bill ${bill?.tableName} ${bill?.id}`)}&ba=${payment.accountNumber}@${payment.bankId.toLowerCase()}&bn=${encode(payment.accountName)}&url=${returnUrl}`;
+    const transferUrl = `https://dl.vietqr.io/pay?app=${encode(appId)}&am=${amount}&tn=${encode(`Bill ${bill?.tableName} ${bill?.id}`)}&ba=${payment.accountNumber}@${transferBankCode.toLowerCase()}&bn=${encode(payment.accountName)}&url=${returnUrl}`;
     setBankPickerOpen(false);
     window.location.assign(transferUrl);
   };
