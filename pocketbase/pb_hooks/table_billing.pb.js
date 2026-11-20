@@ -2507,6 +2507,18 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     return c.json(200, { ok: true });
   }
 
+  if (action === "reset_table_status") {
+    requireAdmin();
+    $app.runInTransaction((txApp) => {
+      const table = findStoreTable(txApp, String(input.tableId || ""));
+      if (findActiveBill(txApp, table.id))
+        throw new BadRequestError("Bàn còn hóa đơn đang mở, cần xử lý hóa đơn trước");
+      table.set("status", "available");
+      txApp.save(table);
+    });
+    return c.json(200, { ok: true });
+  }
+
   if (action === "rename_table") {
     requireAdmin();
     const name = String(input.name || "").trim();

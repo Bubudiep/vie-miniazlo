@@ -190,6 +190,9 @@ export const tableService = {
   async updateStatus(id: string, status: Table['status']) {
     return pb.send<{ ok: boolean }>('/api/table-billing/action', { method: 'POST', body: { action: 'set_table_status', tableId: id, status } });
   },
+  async resetStatus(id: string) {
+    return pb.send<{ ok: boolean }>('/api/table-billing/action', { method: 'POST', body: { action: 'reset_table_status', tableId: id } });
+  },
 
   async rename(id: string, name: string) {
     return pb.send<{ ok: boolean; name: string }>('/api/table-billing/action', { method: 'POST', body: { action: 'rename_table', tableId: id, name } });

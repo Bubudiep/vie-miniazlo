@@ -118,7 +118,13 @@ const validDuration = (value: DurationForm) => {
 };
 
 function errorMessage(error: any) {
-  return error?.response?.message || error?.message || "Không thể lưu dữ liệu mặt hàng";
+  const response = error?.response;
+  const fieldErrors = response?.data && typeof response.data === "object"
+    ? Object.entries(response.data)
+      .map(([field, detail]: [string, any]) => `${field}: ${detail?.message || detail}`)
+      .join("; ")
+    : "";
+  return fieldErrors || response?.message || error?.message || "Không thể lưu dữ liệu mặt hàng";
 }
 
 function getTimePricing(value?: ProductTimePricing | null): ProductTimePricing {
@@ -330,9 +336,9 @@ export default function AdminProductsPage() {
         billing_unit: form.billingMode === "time" ? "hour" as const : "quantity" as const,
         unit_label: form.billingMode === "time" ? "giờ" : form.unitLabel.trim(),
         description: form.description.trim(),
-        time_pricing: timePricing,
         is_active: editing?.is_active ?? true,
       };
+      if (timePricing) data.time_pricing = timePricing;
       if (imageFile) data.image = imageFile;
       if (editing) await productService.update(editing.id, data);
       else await productService.create(data);
