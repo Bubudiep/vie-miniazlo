@@ -46,11 +46,13 @@ export default function PublicBillPage() {
   }, [tableId]);
 
   useEffect(() => {
-    if (!bill?.id || !payment.tingeeVirtualAccount) { setPaymentQr(""); return; }
+    if (!bill?.id || (!payment.tingeeVirtualAccount && !(payment.bankId && payment.accountNumber && payment.accountName))) { setPaymentQr(""); return; }
+    const amount = Math.round(bill.requestedAmount || bill.totalAmount);
+    if (!Number.isSafeInteger(amount) || amount <= 0) { setPaymentQr(""); return; }
     let active = true;
-    tableBillingService.getQr({ tableId, billId: bill.id, amount: Math.round(bill.requestedAmount || bill.totalAmount), content: `Bill ${bill.tableName} ${bill.id}` }).then((result) => { if (active) setPaymentQr(result.qrCodeImage); }).catch(() => { if (active) setPaymentQr(""); });
+    tableBillingService.getQr({ tableId, billId: bill.id, amount, content: `Bill ${bill.tableName} ${bill.id}` }).then((result) => { if (active) setPaymentQr(result.qrCodeImage); }).catch(() => { if (active) setPaymentQr(""); });
     return () => { active = false; };
-  }, [bill?.id, bill?.requestedAmount, bill?.tableName, bill?.totalAmount, payment.tingeeVirtualAccount, tableId]);
+  }, [bill?.id, bill?.requestedAmount, bill?.tableName, bill?.totalAmount, payment.accountName, payment.accountNumber, payment.bankId, payment.tingeeVirtualAccount, tableId]);
 
   const requestPayment = async () => {
     setBusy(true);

@@ -555,13 +555,21 @@ routerAdd("POST", "/api/table-billing/payment-qr", (c) => {
   try {
     settings = $app.findFirstRecordByFilter("bill_payment_settings", "store = {:store}", { store });
   } catch (e) {
-    throw new BadRequestError("Cửa hàng chưa cấu hình tài khoản nhận tiền Tingee");
+    throw new BadRequestError("Cửa hàng chưa cấu hình tài khoản nhận tiền");
   }
+  if (!settings) throw new BadRequestError("Cửa hàng chưa cấu hình tài khoản nhận tiền");
   const accountNumber = String(settings.get("tingee_virtual_account") || "").trim().toUpperCase();
+  const bankId = String(settings.get("bank_id") || "").trim();
+  const bankAccountNumber = String(settings.get("account_number") || "").replace(/\s+/g, "");
+  const accountName = String(settings.get("account_name") || "").trim();
+  if (!accountNumber) {
+    if (!bankId || !/^\d{4,24}$/.test(bankAccountNumber) || !accountName) throw new BadRequestError("Cửa hàng chưa cấu hình đầy đủ tài khoản nhận tiền");
+    const qrParams = "bank=" + encodeURIComponent(bankId) + "&acc=" + encodeURIComponent(bankAccountNumber) + "&template=compact&amount=" + encodeURIComponent(String(amount)) + "&des=" + encodeURIComponent(content) + "&showinfo=true&holder=" + encodeURIComponent(accountName);
+    return c.json(200, { qrCodeImage: "https://vietqr.app/img?" + qrParams, qrCode: "", qrAccount: bankAccountNumber });
+  }
   const clientId = String($os.getenv("TINGEE_CLIENT_ID") || "").trim();
   const secret = String($os.getenv("TINGEE_SECRET") || "").trim();
   const bankName = String($os.getenv("TINGEE_BANK_NAME") || "BIDV").trim().toUpperCase();
-  if (!accountNumber) throw new BadRequestError("Cửa hàng chưa cấu hình VA Tingee");
   if (!clientId || !secret) throw new Error("Tingee chưa được cấu hình trên server");
   const timestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace(/[-:TZ.]/g, "").slice(0, 17);
   const body = JSON.stringify({ bankName, accountNumber, amount, content });
