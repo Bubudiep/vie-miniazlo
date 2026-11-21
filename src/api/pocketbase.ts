@@ -492,6 +492,7 @@ export interface WalletTopupPayment {
   bankId: string;
   accountNumber: string;
   accountName: string;
+  qrCodeImage?: string;
 }
 
 export interface WalletTopupCreateResult {

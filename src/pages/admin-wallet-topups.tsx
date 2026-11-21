@@ -9,7 +9,7 @@ import type { WalletTopup, WalletTopupStatus } from "@/api/pocketbase";
 import { formatVietnamDateTime } from "@/utils/format";
 
 const money = (value: number) => `${value.toLocaleString("vi-VN")}đ`;
-const statusLabel: Record<WalletTopupStatus, string> = { pending: "Chờ SePay xác nhận", paid: "Đã tự động cộng", rejected: "Đã từ chối", expired: "Chưa thanh toán" };
+const statusLabel: Record<WalletTopupStatus, string> = { pending: "Chờ Tingee xác nhận", paid: "Đã tự động cộng", rejected: "Đã từ chối", expired: "Chưa thanh toán" };
 
 export default function AdminWalletTopupsPage() {
   const { user } = useAuth();

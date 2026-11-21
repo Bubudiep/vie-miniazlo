@@ -2,6 +2,18 @@
 
 // PocketBase 0.40.x executes stored route callbacks without the hook module scope.
 // Keep wallet helpers inside this callback so every endpoint runs in the same scope.
+function tingeeQr(accountNumber, amount, content) {
+  const clientId = String($os.getenv("TINGEE_CLIENT_ID") || "").trim()
+  const secret = String($os.getenv("TINGEE_SECRET") || "").trim()
+  if (!clientId || !secret) throw new Error("Tingee chưa được cấu hình trên server")
+  const timestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace(/[-:TZ.]/g, "").slice(0, 17)
+  const body = JSON.stringify({ bankName: String($os.getenv("TINGEE_BANK_NAME") || "BIDV").trim().toUpperCase(), accountNumber, amount, content })
+  const response = $http.send({ method: "POST", url: String($os.getenv("TINGEE_API_URL") || "https://open-api.tingee.vn/v1/generate-viet-qr"), headers: { accept: "application/json", "Content-Type": "application/json", "x-request-timestamp": timestamp, "x-client-id": clientId, "x-signature": $security.hs512(timestamp + ":" + body, secret) }, body })
+  const payload = response.json || (typeof response.body === "string" ? JSON.parse(response.body) : response.body)
+  if (!response || Number(response.statusCode || 0) >= 400 || String(payload?.code || "") !== "00" || !payload?.data?.qrCodeImage) throw new Error(payload?.message || "Tingee không tạo được mã QR")
+  return payload.data.qrCodeImage
+}
+
 function walletDisabled() {
   const request = c.request()
   const path = request.url.path
@@ -857,6 +869,51 @@ routerAdd("POST", "/api/webhooks/sepay", (c) => {
   return c.json(200, response)
 })
 
+routerAdd("POST", "/api/webhooks/tingee", (c) => {
+  const rawBody = toString(c.request().body, 2 * 1024 * 1024)
+  const headers = c.request().header
+  const timestamp = String(headers.get("x-request-timestamp") || headers.get("X-Request-Timestamp") || "").trim()
+  const signature = String(headers.get("x-signature") || headers.get("X-Signature") || "").trim()
+  const secret = String($os.getenv("TINGEE_SECRET") || "").trim()
+  if (!secret || !timestamp || !signature || !$security.equal($security.hs512(timestamp + ":" + rawBody, secret), signature)) throw new UnauthorizedError("Chữ ký webhook Tingee không hợp lệ")
+  let payload
+  try { payload = JSON.parse(rawBody) } catch (e) { throw new BadRequestError("Payload webhook Tingee không hợp lệ") }
+  const eventKey = String(payload.transactionCode || "").trim()
+  const gatewayId = eventKey
+  const accountNumber = String(payload.accountNumber || "").trim()
+  const virtualAccount = String(payload.vaAccountNumber || "").trim().toUpperCase()
+  const content = String(payload.content || "").trim()
+  const amount = Number(payload.amount)
+  if (!eventKey || !Number.isSafeInteger(amount) || amount <= 0) return c.json(200, { code: "00", message: "Bỏ qua giao dịch thiếu dữ liệu" })
+  let duplicate = null
+  try { duplicate = $app.findFirstRecordByFilter("wallet_webhook_events", "provider = 'tingee' && event_key = {:eventKey}", { eventKey }) } catch (e) {}
+  if (duplicate) return c.json(200, { code: "02", message: "Giao dịch đã xử lý" })
+  const event = new Record($app.findCollectionByNameOrId("wallet_webhook_events"))
+  event.set("provider", "tingee"); event.set("event_key", eventKey); event.set("gateway_transaction_id", gatewayId); event.set("account_number", accountNumber || virtualAccount); event.set("amount", amount); event.set("transfer_content", content.slice(0, 500)); event.set("received_at", new Date().toISOString()); event.set("payload_hash", $security.sha256(rawBody)); event.set("status", "received")
+  let settingsRecord = null
+  try { settingsRecord = $app.findFirstRecordByFilter("bill_payment_settings", "tingee_virtual_account = {:account}", { account: virtualAccount }) } catch (e) {}
+  if (!settingsRecord) { event.set("status", "ignored"); event.set("failure_reason", "VA Tingee không khớp"); $app.save(event); return c.json(200, { code: "00", message: "Bỏ qua VA không khớp" }) }
+  const store = String(settingsRecord.get("store") || "")
+  const topups = $app.findRecordsByFilter("wallet_topup_requests", "store = {:store} && status = 'pending'", "-created", 200, 0, { store })
+  const normalizedContent = content.toUpperCase().replace(/\s+/g, "")
+  const match = topups.find((item) => normalizedContent.includes(String(item.get("transfer_code") || "").toUpperCase()))
+  if (!match) { event.set("store", store); event.set("status", "ignored"); event.set("failure_reason", "Không phải giao dịch nạp ví"); $app.save(event); return c.json(200, { code: "00", message: "Bỏ qua giao dịch bill" }) }
+  if (Number(match.get("amount")) !== amount) { event.set("store", store); event.set("topup", match.id); event.set("status", "failed"); event.set("failure_reason", "Số tiền không khớp yêu cầu nạp"); $app.save(event); return c.json(200, { code: "00", message: "Số tiền không khớp" }) }
+  $app.runInTransaction((txApp) => {
+    const topup = txApp.findRecordById("wallet_topup_requests", match.id)
+    if (topup.get("status") !== "pending") throw new BadRequestError("Yêu cầu nạp đã được xử lý")
+    let wallet
+    try { wallet = txApp.findFirstRecordByFilter("wallets", "user = {:user} && store = {:store}", { user: topup.get("user"), store }) } catch (e) { wallet = new Record(txApp.findCollectionByNameOrId("wallets")); wallet.set("user", topup.get("user")); wallet.set("store", store); wallet.set("main_balance", 0); txApp.save(wallet) }
+    const before = Number(wallet.get("main_balance")) || 0
+    wallet.set("main_balance", before + amount); txApp.save(wallet)
+    const transaction = new Record(txApp.findCollectionByNameOrId("wallet_transactions")); transaction.set("wallet", wallet.id); transaction.set("user", topup.get("user")); transaction.set("store", store); transaction.set("wallet_type", "main"); transaction.set("direction", "credit"); transaction.set("amount", amount); transaction.set("reason", "Nạp tiền Tingee " + topup.get("transfer_code")); transaction.set("reference_type", "topup"); transaction.set("reference_id", topup.id); transaction.set("idempotency_key", "topup-" + topup.id); transaction.set("balance_before", before); transaction.set("balance_after", before + amount); txApp.save(transaction)
+    require(`${__hooks}/wallet_promo.js`).awardTopupBonus(txApp, Record, wallet, topup, store)
+    topup.set("status", "paid"); topup.set("reviewed_at", new Date().toISOString()); topup.set("gateway_transaction_id", gatewayId); txApp.save(topup)
+    const txEvent = txApp.findRecordById("wallet_webhook_events", event.id); txEvent.set("store", store); txEvent.set("topup", topup.id); txEvent.set("status", "processed"); txApp.save(txEvent)
+  })
+  return c.json(200, { code: "00", message: "Đã cộng tiền" })
+})
+
 routerAdd("POST", "/api/wallet/topups", (c) => {
   const info = c.requestInfo()
   const auth = info.auth || c.auth
@@ -874,15 +931,14 @@ routerAdd("POST", "/api/wallet/topups", (c) => {
   if (note.length > 500 || proof.length > 500) throw new BadRequestError("Ghi chú hoặc chứng từ quá dài")
   let settingsRecord = null
   try { settingsRecord = $app.findFirstRecordByFilter("bill_payment_settings", "store = {:store}", { store }) } catch (e) {}
-  if (!settingsRecord || !settingsRecord.get("bank_id") || !settingsRecord.get("account_number") || !settingsRecord.get("account_name")) throw new BadRequestError("Cửa hàng chưa cấu hình tài khoản nhận tiền QR")
-  const virtualAccount = String(settingsRecord.get("sepay_virtual_account") || "").trim().toUpperCase()
-  const virtualBankCode = String(settingsRecord.get("sepay_bank_code") || "").trim().toUpperCase()
-  if (!/^[A-Z0-9]{4,24}$/.test(virtualAccount) || !/^[A-Z0-9]{2,20}$/.test(virtualBankCode)) throw new BadRequestError("Admin chưa cấu hình VA SePay trong mục Tài khoản")
-  const topupPayment = { bankId: virtualBankCode, accountNumber: virtualAccount, accountName: settingsRecord.get("account_name") || "" }
+  if (!settingsRecord || !settingsRecord.get("account_name")) throw new BadRequestError("Cửa hàng chưa cấu hình tài khoản nhận tiền QR")
+  const virtualAccount = String(settingsRecord.get("tingee_virtual_account") || "").trim().toUpperCase()
+  const virtualBankCode = String(settingsRecord.get("bank_id") || "").trim().toUpperCase()
+  if (!/^[A-Z0-9]{4,24}$/.test(virtualAccount) || !/^[A-Z0-9]{2,40}$/.test(virtualBankCode)) throw new BadRequestError("Admin chưa cấu hình VA Tingee trong mục Tài khoản")
   const toJson = (record, user) => ({ id: record.id, store: record.get("store"), user: record.get("user"), username: user.get("username") || "", fullname: user.get("fullname") || "", amount: Number(record.get("amount")) || 0, status: record.get("status") || "pending", transferCode: record.get("transfer_code") || "", proof: record.get("proof") || "", note: record.get("note") || "", reviewedBy: record.get("reviewed_by") || "", reviewedAt: record.get("reviewed_at") || "", rejectionReason: record.get("rejection_reason") || "", gatewayTransactionId: record.get("gateway_transaction_id") || "", idempotencyKey: record.get("idempotency_key") || "", created: record.get("created"), updated: record.get("updated") })
   let existing = null
   try { existing = $app.findFirstRecordByFilter("wallet_topup_requests", "user = {:user} && store = {:store} && idempotency_key = {:key}", { user: auth.id, store, key: idempotencyKey }) } catch (e) {}
-  if (existing) return c.json(200, { topup: toJson(existing, auth), payment: topupPayment, alreadyCreated: true })
+  if (existing) return c.json(200, { topup: toJson(existing, auth), payment: { bankId: virtualBankCode, accountNumber: virtualAccount, accountName: settingsRecord.get("account_name") || "", qrCodeImage: tingeeQr(virtualAccount, Number(existing.get("amount")), "NAPVI " + existing.get("transfer_code")) }, alreadyCreated: true })
   let transferCode = ""
   do {
     transferCode = "NAP" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase()
@@ -898,7 +954,7 @@ routerAdd("POST", "/api/wallet/topups", (c) => {
   topup.set("note", note)
   topup.set("idempotency_key", idempotencyKey)
   $app.save(topup)
-  return c.json(200, { topup: toJson(topup, auth), payment: topupPayment, alreadyCreated: false })
+  return c.json(200, { topup: toJson(topup, auth), payment: { bankId: virtualBankCode, accountNumber: virtualAccount, accountName: settingsRecord.get("account_name") || "", qrCodeImage: tingeeQr(virtualAccount, amount, "NAPVI " + transferCode) }, alreadyCreated: false })
 })
 
 routerAdd("GET", "/api/wallet/topups", (c) => {
