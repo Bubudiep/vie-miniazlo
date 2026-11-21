@@ -477,6 +477,7 @@ routerAdd("GET", "/api/table-billing/payment-settings", (c) => {
     bankId: settings ? settings.get("bank_id") || "" : "",
     accountNumber: settings ? settings.get("account_number") || "" : "",
     accountName: settings ? settings.get("account_name") || "" : "",
+    tingeeVirtualAccount: settings ? settings.get("tingee_virtual_account") || "" : "",
     sepayVirtualAccount: settings
       ? settings.get("sepay_virtual_account") || ""
       : "",
@@ -497,6 +498,7 @@ routerAdd("PATCH", "/api/table-billing/payment-settings", (c) => {
   const bankId = String(input.bankId || "").trim();
   const accountNumber = String(input.accountNumber || "").replace(/\s+/g, "");
   const accountName = String(input.accountName || "").trim();
+  const tingeeVirtualAccount = String(input.tingeeVirtualAccount || "").replace(/\s+/g, "").toUpperCase();
   const sepayVirtualAccount = String(input.sepayVirtualAccount || "")
     .replace(/\s+/g, "")
     .toUpperCase();
@@ -516,6 +518,8 @@ routerAdd("PATCH", "/api/table-billing/payment-settings", (c) => {
     throw new BadRequestError("Số tài khoản phải gồm 4 đến 24 chữ số");
   if (accountName.length > 100)
     throw new BadRequestError("Tên chủ tài khoản tối đa 100 ký tự");
+  if (tingeeVirtualAccount && !/^[A-Z0-9]{4,24}$/.test(tingeeVirtualAccount))
+    throw new BadRequestError("Tài khoản ảo Tingee không hợp lệ");
   if (sepayVirtualAccount && !/^[A-Z0-9]{4,24}$/.test(sepayVirtualAccount))
     throw new BadRequestError("Số tài khoản ảo SePay không hợp lệ");
   if (sepayVirtualAccount && !sepayBankCode)
@@ -539,6 +543,7 @@ routerAdd("PATCH", "/api/table-billing/payment-settings", (c) => {
   settings.set("bank_id", bankId);
   settings.set("account_number", accountNumber);
   settings.set("account_name", accountName);
+  settings.set("tingee_virtual_account", tingeeVirtualAccount);
   settings.set("sepay_virtual_account", sepayVirtualAccount);
   settings.set("sepay_bank_code", sepayVirtualAccount ? sepayBankCode : "");
   $app.save(settings);
@@ -546,9 +551,40 @@ routerAdd("PATCH", "/api/table-billing/payment-settings", (c) => {
     bankId: settings.get("bank_id") || "",
     accountNumber: settings.get("account_number") || "",
     accountName: settings.get("account_name") || "",
+    tingeeVirtualAccount: settings.get("tingee_virtual_account") || "",
     sepayVirtualAccount: settings.get("sepay_virtual_account") || "",
     sepayBankCode: settings.get("sepay_bank_code") || "",
   });
+});
+
+routerAdd("POST", "/api/table-billing/payment-qr", (c) => {
+  const info = c.requestInfo();
+  const auth = info.auth || c.auth;
+  const input = info.body || {};
+  const billId = String(input.billId || "").trim();
+  const tableId = String(input.tableId || "").trim();
+  const amount = Number(input.amount);
+  const content = String(input.content || "").trim().slice(0, 120);
+  if (!billId || !Number.isSafeInteger(amount) || amount <= 0 || !content) throw new BadRequestError("Thông tin QR thanh toán không hợp lệ");
+  let bill;
+  try { bill = $app.findRecordById("table_bills", billId); } catch (e) { throw new BadRequestError("Không tìm thấy bill"); }
+  const store = String(bill.get("store") || "");
+  if (auth && String(auth.get("store") || "") !== store) throw new ForbiddenError("Bill không thuộc cửa hàng");
+  if (!auth && (!tableId || String(bill.get("table") || "") !== tableId)) throw new ForbiddenError("Không có quyền xem bill");
+  const settings = $app.findFirstRecordByFilter("bill_payment_settings", "store = {:store}", { store });
+  const accountNumber = String(settings.get("tingee_virtual_account") || "").trim().toUpperCase();
+  const clientId = String($os.getenv("TINGEE_CLIENT_ID") || "").trim();
+  const secret = String($os.getenv("TINGEE_SECRET") || "").trim();
+  const bankName = String($os.getenv("TINGEE_BANK_NAME") || "BIDV").trim().toUpperCase();
+  if (!accountNumber || !clientId || !secret) throw new Error("Tingee chưa được cấu hình trên server");
+  const timestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace(/[-:TZ.]/g, "").slice(0, 17);
+  const body = JSON.stringify({ bankName, accountNumber, amount, content });
+  const signature = $security.hs512(timestamp + ":" + body, secret);
+  const response = $http.send({ method: "POST", url: String($os.getenv("TINGEE_API_URL") || "https://open-api.tingee.vn/v1/generate-viet-qr"), headers: { "accept": "application/json", "Content-Type": "application/json", "x-request-timestamp": timestamp, "x-client-id": clientId, "x-signature": signature }, body });
+  if (!response || Number(response.statusCode || 0) >= 400) throw new Error("Không thể tạo mã QR Tingee");
+  const payload = response.json || (typeof response.body === "string" ? JSON.parse(response.body) : response.body);
+  if (String(payload.code || "") !== "00" || !payload.data?.qrCodeImage) throw new Error(payload.message || "Tingee không tạo được mã QR");
+  return c.json(200, { qrCodeImage: payload.data.qrCodeImage, qrCode: payload.data.qrCode || "", qrAccount: payload.data.qrAccount || accountNumber });
 });
 
 routerAdd("GET", "/api/table-billing/auto-open-products", (c) => {
@@ -2019,7 +2055,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     let payment = { bankId: "", accountNumber: "", accountName: "" };
     try {
       const settings = $app.findFirstRecordByFilter("bill_payment_settings", "store = {:store}", { store });
-      payment = { bankId: settings.get("bank_id") || "", accountNumber: settings.get("account_number") || "", accountName: settings.get("account_name") || "" };
+      payment = { bankId: settings.get("bank_id") || "", accountNumber: settings.get("account_number") || "", accountName: settings.get("account_name") || "", tingeeVirtualAccount: settings.get("tingee_virtual_account") || "" };
     } catch (e) {}
     return c.json(200, { ok: true, storeName, tableName: table.get("name") || "Bàn", payment, menu, bill: value });
   }

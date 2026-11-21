@@ -92,6 +92,9 @@ export const billPaymentService = {
   saveSettings(settings: BillPaymentSettings) {
     return pb.send<BillPaymentSettings>('/api/table-billing/payment-settings', { method: 'PATCH', body: settings });
   },
+  getQr(input: { tableId?: string; billId?: string; amount: number; content: string }) {
+    return pb.send<{ qrCodeImage: string; qrCode: string; qrAccount: string }>('/api/table-billing/payment-qr', { method: 'POST', body: input });
+  },
 };
 
 export const productService = {
@@ -202,7 +205,7 @@ export const tableService = {
 
 export const tableBillingService = {
   async getPublicDetail(tableId: string) {
-    const result = await pb.send<{ ok: boolean; storeName: string; tableName: string; payment: Pick<BillPaymentSettings, 'bankId' | 'accountNumber' | 'accountName'>; menu: TableBillProduct[]; bill: TableBill | null }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_detail', tableId } });
+    const result = await pb.send<{ ok: boolean; storeName: string; tableName: string; payment: Pick<BillPaymentSettings, 'bankId' | 'accountNumber' | 'accountName' | 'tingeeVirtualAccount'>; menu: TableBillProduct[]; bill: TableBill | null }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_detail', tableId } });
     return result;
   },
   async requestPublicOrder(tableId: string, billId: string, items: { productId: string; quantity: number }[]) {

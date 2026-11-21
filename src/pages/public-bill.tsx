@@ -16,7 +16,8 @@ export default function PublicBillPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [storeName, setStoreName] = useState("H2 Billiards");
   const [tableName, setTableName] = useState("Bàn");
-  const [payment, setPayment] = useState({ bankId: "", accountNumber: "", accountName: "" });
+  const [payment, setPayment] = useState({ bankId: "", accountNumber: "", accountName: "", tingeeVirtualAccount: "" });
+  const [paymentQr, setPaymentQr] = useState("");
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -43,6 +44,13 @@ export default function PublicBillPage() {
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 5000);
     return () => window.clearInterval(timer);
   }, [tableId]);
+
+  useEffect(() => {
+    if (!bill?.id || !payment.tingeeVirtualAccount) { setPaymentQr(""); return; }
+    let active = true;
+    tableBillingService.getQr({ tableId, billId: bill.id, amount: Math.round(bill.requestedAmount || bill.totalAmount), content: `Bill ${bill.tableName} ${bill.id}` }).then((result) => { if (active) setPaymentQr(result.qrCodeImage); }).catch(() => { if (active) setPaymentQr(""); });
+    return () => { active = false; };
+  }, [bill?.id, bill?.requestedAmount, bill?.tableName, bill?.totalAmount, payment.tingeeVirtualAccount, tableId]);
 
   const requestPayment = async () => {
     setBusy(true);
@@ -126,7 +134,7 @@ export default function PublicBillPage() {
   const paymentPending = bill.status === "wallet_pending" && bill.paymentMethod === "transfer";
   const otherPaymentPending = bill.status === "wallet_pending" && !paymentPending;
   const status = bill.status === "paid" ? "Đã thanh toán" : bill.status === "cancelled" ? "Đã hủy" : paymentPending ? "Chờ xác nhận" : otherPaymentPending ? "Chờ duyệt ví" : bill.status === "stopped" ? "Chưa thanh toán" : "Đang sử dụng";
-  const qrUrl = payment.bankId && payment.accountNumber ? `https://img.vietqr.io/image/${encodeURIComponent(payment.bankId)}-${encodeURIComponent(payment.accountNumber)}-compact2.png?amount=${Math.round(bill.requestedAmount || bill.totalAmount)}&addInfo=${encodeURIComponent(`Bill ${bill.tableName} ${bill.id}`)}&accountName=${encodeURIComponent(payment.accountName)}` : "";
+  const qrUrl = paymentQr;
   return <Page className="min-h-screen bg-slate-50 px-4 py-6">
     <main className="mx-auto max-w-md space-y-4 pb-6">
       <header className="rounded-xl bg-emerald-700 px-4 py-5 text-center text-white shadow-sm">

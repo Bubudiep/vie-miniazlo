@@ -73,6 +73,7 @@ export default function PlayingPage() {
   const [paymentSettings, setPaymentSettings] = useState<BillPaymentSettings | null>(null);
   const [paymentSettingsLoading, setPaymentSettingsLoading] = useState(false);
   const [paymentSettingsError, setPaymentSettingsError] = useState("");
+  const [paymentQr, setPaymentQr] = useState("");
   const [paymentDone, setPaymentDone] = useState<{ promoUsed?: number; mainUsed?: number } | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState<TableBill | null>(null);
   const [legacyOrder, setLegacyOrder] = useState<WalletOrder | null>(null);
@@ -174,6 +175,13 @@ export default function PlayingPage() {
     });
     return () => { active = false; };
   }, [bill?.id, bill?.status, paymentSheetOpen]);
+
+  useEffect(() => {
+    if (!paymentSheetOpen || !bill?.id || paymentMode !== "qr" || !paymentSettings?.tingeeVirtualAccount) { setPaymentQr(""); return; }
+    let active = true;
+    billPaymentService.getQr({ billId: bill.id, amount: Math.round(isAdmin ? paymentDueAmount : bill.totalAmount), content: `Bill ${bill.tableName} ${bill.id}` }).then((result) => { if (active) setPaymentQr(result.qrCodeImage); }).catch((error) => { if (active) { setPaymentQr(""); setPaymentSettingsError(errorMessage(error)); } });
+    return () => { active = false; };
+  }, [bill?.id, bill?.tableName, bill?.totalAmount, isAdmin, paymentDueAmount, paymentMode, paymentSettings?.tingeeVirtualAccount, paymentSheetOpen]);
 
   useEffect(() => {
     if (!operationsOpen || !canManageOperations) return;
@@ -652,8 +660,8 @@ export default function PlayingPage() {
   const billStatus = bill.status === "paid" ? "Đã thanh toán" : bill.status === "wallet_pending" || (isStopped && bill.paymentRequested) ? (bill.paymentMethod === "transfer" ? "Chờ xác nhận chuyển khoản" : "Chờ duyệt ví") : bill.status === "stopped" ? "Đã chốt" : bill.status === "cancelled" ? "Đã hủy" : isBillingPaused ? "Đang tạm dừng" : "Đang sử dụng";
   const unitText = (unit: TableBillProduct["billingUnit"]) => unit === "hour" ? "giờ" : unit === "weight" ? "kg" : "lần";
   const priceUnit = (unit: TableBillProduct["billingUnit"], unitLabel: string, intervalMinutes?: number) => unit === "hour" ? formatDuration(intervalMinutes || 60) : unitLabel || unitText(unit);
-  const qrReady = !!(paymentSettings?.bankId && paymentSettings.accountNumber && paymentSettings.accountName);
-  const qrUrl = qrReady ? `https://img.vietqr.io/image/${encodeURIComponent(paymentSettings.bankId)}-${encodeURIComponent(paymentSettings.accountNumber)}-compact2.png?amount=${Math.round(isAdmin ? paymentDueAmount : bill.totalAmount)}&addInfo=${encodeURIComponent(`Bill ${bill.tableName} ${bill.id}`)}&accountName=${encodeURIComponent(paymentSettings.accountName)}` : "";
+  const qrReady = !!(paymentSettings?.tingeeVirtualAccount && paymentQr);
+  const qrUrl = paymentQr;
   const operationTableName = (tableId: string) => operationMap?.tables.find((table) => table.id === tableId)?.name || "Bàn";
   const mergeOptions = operationMap?.activeBills.filter((item) => item.id !== bill.id) || [];
   const occupiedTableIds = new Set(operationMap?.activeBills.map((item) => item.table) || []);

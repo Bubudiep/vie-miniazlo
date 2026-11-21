@@ -31,6 +31,7 @@ export interface BillPaymentSettings {
   bankId: string;
   accountNumber: string;
   accountName: string;
+  tingeeVirtualAccount: string;
   sepayVirtualAccount: string;
   sepayBankCode: string;
 }
