@@ -869,6 +869,8 @@ routerAdd("POST", "/api/webhooks/sepay", (c) => {
   return c.json(200, response)
 })
 
+routerAdd("GET", "/api/webhooks/tingee", (c) => c.json(200, { ok: true }))
+routerAdd("OPTIONS", "/api/webhooks/tingee", (c) => c.json(200, { ok: true }))
 routerAdd("POST", "/api/webhooks/tingee", (c) => {
   const rawBody = toString(c.request().body, 2 * 1024 * 1024)
   const headers = c.request().header
