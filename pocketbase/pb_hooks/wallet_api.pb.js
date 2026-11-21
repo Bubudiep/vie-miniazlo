@@ -2,23 +2,6 @@
 
 // PocketBase 0.40.x executes stored route callbacks without the hook module scope.
 // Keep wallet helpers inside this callback so every endpoint runs in the same scope.
-function tingeeQr(accountNumber, amount, content) {
-  const clientId = String($os.getenv("TINGEE_CLIENT_ID") || "").trim()
-  const secret = String($os.getenv("TINGEE_SECRET") || "").trim()
-  if (!clientId || !secret) throw new Error("Tingee chưa được cấu hình trên server")
-  const timestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace(/[-:TZ.]/g, "").slice(0, 17)
-  const body = JSON.stringify({ bankName: String($os.getenv("TINGEE_BANK_NAME") || "BIDV").trim().toUpperCase(), accountNumber, amount, content })
-  const response = $http.send({ method: "POST", url: String($os.getenv("TINGEE_API_URL") || "https://open-api.tingee.vn/v1/generate-viet-qr"), headers: { accept: "application/json", "Content-Type": "application/json", "x-request-timestamp": timestamp, "x-client-id": clientId, "x-signature": $security.hs512(timestamp + ":" + body, secret) }, body })
-  if (!response) throw new BadRequestError("Tingee không phản hồi khi tạo mã QR")
-  let payload = {}
-  try { payload = response.json || (typeof response.body === "string" ? JSON.parse(response.body) : response.body) || {} } catch (e) { throw new BadRequestError("Tingee trả về dữ liệu QR không hợp lệ") }
-  if (Number(response.statusCode || 0) >= 400 || String(payload.code || "") !== "00" || !payload.data?.qrCodeImage) {
-    const detail = String(payload.message || payload.error || "").trim()
-    throw new BadRequestError("Tingee không tạo được mã QR" + (detail ? ": " + detail : ""))
-  }
-  return payload.data.qrCodeImage
-}
-
 function walletDisabled() {
   const request = c.request()
   const path = request.url.path
@@ -908,8 +891,13 @@ routerAdd("POST", "/api/webhooks/tingee", (c) => {
   const event = new Record($app.findCollectionByNameOrId("wallet_webhook_events"))
   event.set("provider", "tingee"); event.set("event_key", eventKey); event.set("gateway_transaction_id", gatewayId); event.set("account_number", accountNumber || virtualAccount); event.set("amount", amount); event.set("transfer_content", content.slice(0, 500)); event.set("received_at", new Date().toISOString()); event.set("payload_hash", $security.sha256(rawBody)); event.set("status", "received")
   let settingsRecord = null
-  try { settingsRecord = $app.findFirstRecordByFilter("bill_payment_settings", "tingee_virtual_account = {:account}", { account: virtualAccount }) } catch (e) {}
-  if (!settingsRecord) { event.set("status", "ignored"); event.set("failure_reason", "VA Tingee không khớp"); $app.save(event); return c.json(200, { code: "00", message: "Bỏ qua VA không khớp" }) }
+  if (virtualAccount) {
+    try { settingsRecord = $app.findFirstRecordByFilter("bill_payment_settings", "tingee_virtual_account = {:account}", { account: virtualAccount }) } catch (e) {}
+  }
+  if (!settingsRecord && accountNumber) {
+    try { settingsRecord = $app.findFirstRecordByFilter("bill_payment_settings", "account_number = {:account}", { account: accountNumber }) } catch (e) {}
+  }
+  if (!settingsRecord) { event.set("status", "ignored"); event.set("failure_reason", virtualAccount ? "VA Tingee không khớp" : "STK nhận tiền không khớp"); $app.save(event); return c.json(200, { code: "00", message: "Bỏ qua tài khoản nhận không khớp" }) }
   const store = String(settingsRecord.get("store") || "")
   const topups = $app.findRecordsByFilter("wallet_topup_requests", "store = {:store} && status = 'pending'", "-created", 200, 0, { store })
   const normalizedContent = content.toUpperCase().replace(/\s+/g, "")
@@ -950,12 +938,36 @@ routerAdd("POST", "/api/wallet/topups", (c) => {
   try { settingsRecord = $app.findFirstRecordByFilter("bill_payment_settings", "store = {:store}", { store }) } catch (e) {}
   if (!settingsRecord || !settingsRecord.get("account_name")) throw new BadRequestError("Cửa hàng chưa cấu hình tài khoản nhận tiền QR")
   const virtualAccount = String(settingsRecord.get("tingee_virtual_account") || "").trim().toUpperCase()
-  const virtualBankCode = String(settingsRecord.get("bank_id") || "").trim().toUpperCase()
-  if (!/^[A-Z0-9]{4,24}$/.test(virtualAccount) || !/^[A-Z0-9]{2,40}$/.test(virtualBankCode)) throw new BadRequestError("Admin chưa cấu hình VA Tingee trong mục Tài khoản")
+  const bankId = String(settingsRecord.get("bank_id") || "").trim().toUpperCase()
+  const bankAccountNumber = String(settingsRecord.get("account_number") || "").replace(/\s+/g, "")
+  if (virtualAccount && !/^[A-Z0-9]{4,24}$/.test(virtualAccount)) throw new BadRequestError("Mã VA Tingee không hợp lệ trong mục Tài khoản")
+  if (!bankId || !/^\d{4,24}$/.test(bankAccountNumber)) throw new BadRequestError("Admin chưa cấu hình đầy đủ STK nhận tiền trong mục Tài khoản")
+  const paymentBankId = bankId
+  const paymentAccountNumber = virtualAccount || bankAccountNumber
+  const createQr = (accountNumber, qrAmount, content) => {
+    if (!virtualAccount) {
+      const qrParams = "bank=" + encodeURIComponent(bankId) + "&acc=" + encodeURIComponent(bankAccountNumber) + "&template=compact&amount=" + encodeURIComponent(String(qrAmount)) + "&des=" + encodeURIComponent(content) + "&showinfo=true&holder=" + encodeURIComponent(settingsRecord.get("account_name") || "")
+      return "https://vietqr.app/img?" + qrParams
+    }
+    const clientId = String($os.getenv("TINGEE_CLIENT_ID") || "").trim()
+    const secret = String($os.getenv("TINGEE_SECRET") || "").trim()
+    if (!clientId || !secret) throw new Error("Tingee chưa được cấu hình trên server")
+    const timestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace(/[-:TZ.]/g, "").slice(0, 17)
+    const body = JSON.stringify({ bankName: String($os.getenv("TINGEE_BANK_NAME") || "BIDV").trim().toUpperCase(), accountNumber, amount: qrAmount, content })
+    const response = $http.send({ method: "POST", url: String($os.getenv("TINGEE_API_URL") || "https://open-api.tingee.vn/v1/generate-viet-qr"), headers: { accept: "application/json", "Content-Type": "application/json", "x-request-timestamp": timestamp, "x-client-id": clientId, "x-signature": $security.hs512(timestamp + ":" + body, secret) }, body })
+    if (!response) throw new BadRequestError("Tingee không phản hồi khi tạo mã QR")
+    let payload = {}
+    try { payload = response.json || (typeof response.body === "string" ? JSON.parse(response.body) : response.body) || {} } catch (e) { throw new BadRequestError("Tingee trả về dữ liệu QR không hợp lệ") }
+    if (Number(response.statusCode || 0) >= 400 || String(payload.code || "") !== "00" || !payload.data?.qrCodeImage) {
+      const detail = String(payload.message || payload.error || "").trim()
+      throw new BadRequestError("Tingee không tạo được mã QR" + (detail ? ": " + detail : ""))
+    }
+    return payload.data.qrCodeImage
+  }
   const toJson = (record, user) => ({ id: record.id, store: record.get("store"), user: record.get("user"), username: user.get("username") || "", fullname: user.get("fullname") || "", amount: Number(record.get("amount")) || 0, status: record.get("status") || "pending", transferCode: record.get("transfer_code") || "", proof: record.get("proof") || "", note: record.get("note") || "", reviewedBy: record.get("reviewed_by") || "", reviewedAt: record.get("reviewed_at") || "", rejectionReason: record.get("rejection_reason") || "", gatewayTransactionId: record.get("gateway_transaction_id") || "", idempotencyKey: record.get("idempotency_key") || "", created: record.get("created"), updated: record.get("updated") })
   let existing = null
   try { existing = $app.findFirstRecordByFilter("wallet_topup_requests", "user = {:user} && store = {:store} && idempotency_key = {:key}", { user: auth.id, store, key: idempotencyKey }) } catch (e) {}
-  if (existing) return c.json(200, { topup: toJson(existing, auth), payment: { bankId: virtualBankCode, accountNumber: virtualAccount, accountName: settingsRecord.get("account_name") || "", qrCodeImage: tingeeQr(virtualAccount, Number(existing.get("amount")), "NAPVI " + existing.get("transfer_code")) }, alreadyCreated: true })
+  if (existing) return c.json(200, { topup: toJson(existing, auth), payment: { bankId: paymentBankId, accountNumber: paymentAccountNumber, accountName: settingsRecord.get("account_name") || "", qrCodeImage: createQr(paymentAccountNumber, Number(existing.get("amount")), "NAPVI " + existing.get("transfer_code")) }, alreadyCreated: true })
   let transferCode = ""
   do {
     transferCode = "NAP" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase()
@@ -971,7 +983,7 @@ routerAdd("POST", "/api/wallet/topups", (c) => {
   topup.set("note", note)
   topup.set("idempotency_key", idempotencyKey)
   $app.save(topup)
-  return c.json(200, { topup: toJson(topup, auth), payment: { bankId: virtualBankCode, accountNumber: virtualAccount, accountName: settingsRecord.get("account_name") || "", qrCodeImage: tingeeQr(virtualAccount, amount, "NAPVI " + transferCode) }, alreadyCreated: false })
+  return c.json(200, { topup: toJson(topup, auth), payment: { bankId: paymentBankId, accountNumber: paymentAccountNumber, accountName: settingsRecord.get("account_name") || "", qrCodeImage: createQr(paymentAccountNumber, amount, "NAPVI " + transferCode) }, alreadyCreated: false })
 })
 
 routerAdd("GET", "/api/wallet/topups", (c) => {
