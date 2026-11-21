@@ -478,10 +478,6 @@ routerAdd("GET", "/api/table-billing/payment-settings", (c) => {
     accountNumber: settings ? settings.get("account_number") || "" : "",
     accountName: settings ? settings.get("account_name") || "" : "",
     tingeeVirtualAccount: settings ? settings.get("tingee_virtual_account") || "" : "",
-    sepayVirtualAccount: settings
-      ? settings.get("sepay_virtual_account") || ""
-      : "",
-    sepayBankCode: settings ? settings.get("sepay_bank_code") || "" : "",
   });
 });
 
@@ -499,12 +495,6 @@ routerAdd("PATCH", "/api/table-billing/payment-settings", (c) => {
   const accountNumber = String(input.accountNumber || "").replace(/\s+/g, "");
   const accountName = String(input.accountName || "").trim();
   const tingeeVirtualAccount = String(input.tingeeVirtualAccount || "").replace(/\s+/g, "").toUpperCase();
-  const sepayVirtualAccount = String(input.sepayVirtualAccount || "")
-    .replace(/\s+/g, "")
-    .toUpperCase();
-  const sepayBankCode = String(input.sepayBankCode || "")
-    .trim()
-    .toUpperCase();
   const populatedFields = [bankId, accountNumber, accountName].filter(
     Boolean,
   ).length;
@@ -520,12 +510,6 @@ routerAdd("PATCH", "/api/table-billing/payment-settings", (c) => {
     throw new BadRequestError("Tên chủ tài khoản tối đa 100 ký tự");
   if (tingeeVirtualAccount && !/^[A-Z0-9]{4,24}$/.test(tingeeVirtualAccount))
     throw new BadRequestError("Tài khoản ảo Tingee không hợp lệ");
-  if (sepayVirtualAccount && !/^[A-Z0-9]{4,24}$/.test(sepayVirtualAccount))
-    throw new BadRequestError("Số tài khoản ảo SePay không hợp lệ");
-  if (sepayVirtualAccount && !sepayBankCode)
-    throw new BadRequestError(
-      "Vui lòng chọn ngân hàng nhận tiền trước khi cấu hình VA SePay",
-    );
 
   let settings = null;
   try {
@@ -544,16 +528,12 @@ routerAdd("PATCH", "/api/table-billing/payment-settings", (c) => {
   settings.set("account_number", accountNumber);
   settings.set("account_name", accountName);
   settings.set("tingee_virtual_account", tingeeVirtualAccount);
-  settings.set("sepay_virtual_account", sepayVirtualAccount);
-  settings.set("sepay_bank_code", sepayVirtualAccount ? sepayBankCode : "");
   $app.save(settings);
   return c.json(200, {
     bankId: settings.get("bank_id") || "",
     accountNumber: settings.get("account_number") || "",
     accountName: settings.get("account_name") || "",
     tingeeVirtualAccount: settings.get("tingee_virtual_account") || "",
-    sepayVirtualAccount: settings.get("sepay_virtual_account") || "",
-    sepayBankCode: settings.get("sepay_bank_code") || "",
   });
 });
 
@@ -571,12 +551,18 @@ routerAdd("POST", "/api/table-billing/payment-qr", (c) => {
   const store = String(bill.get("store") || "");
   if (auth && String(auth.get("store") || "") !== store) throw new ForbiddenError("Bill không thuộc cửa hàng");
   if (!auth && (!tableId || String(bill.get("table") || "") !== tableId)) throw new ForbiddenError("Không có quyền xem bill");
-  const settings = $app.findFirstRecordByFilter("bill_payment_settings", "store = {:store}", { store });
+  let settings;
+  try {
+    settings = $app.findFirstRecordByFilter("bill_payment_settings", "store = {:store}", { store });
+  } catch (e) {
+    throw new BadRequestError("Cửa hàng chưa cấu hình tài khoản nhận tiền Tingee");
+  }
   const accountNumber = String(settings.get("tingee_virtual_account") || "").trim().toUpperCase();
   const clientId = String($os.getenv("TINGEE_CLIENT_ID") || "").trim();
   const secret = String($os.getenv("TINGEE_SECRET") || "").trim();
   const bankName = String($os.getenv("TINGEE_BANK_NAME") || "BIDV").trim().toUpperCase();
-  if (!accountNumber || !clientId || !secret) throw new Error("Tingee chưa được cấu hình trên server");
+  if (!accountNumber) throw new BadRequestError("Cửa hàng chưa cấu hình VA Tingee");
+  if (!clientId || !secret) throw new Error("Tingee chưa được cấu hình trên server");
   const timestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace(/[-:TZ.]/g, "").slice(0, 17);
   const body = JSON.stringify({ bankName, accountNumber, amount, content });
   const signature = $security.hs512(timestamp + ":" + body, secret);

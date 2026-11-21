@@ -9,8 +9,13 @@ function tingeeQr(accountNumber, amount, content) {
   const timestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace(/[-:TZ.]/g, "").slice(0, 17)
   const body = JSON.stringify({ bankName: String($os.getenv("TINGEE_BANK_NAME") || "BIDV").trim().toUpperCase(), accountNumber, amount, content })
   const response = $http.send({ method: "POST", url: String($os.getenv("TINGEE_API_URL") || "https://open-api.tingee.vn/v1/generate-viet-qr"), headers: { accept: "application/json", "Content-Type": "application/json", "x-request-timestamp": timestamp, "x-client-id": clientId, "x-signature": $security.hs512(timestamp + ":" + body, secret) }, body })
-  const payload = response.json || (typeof response.body === "string" ? JSON.parse(response.body) : response.body)
-  if (!response || Number(response.statusCode || 0) >= 400 || String(payload?.code || "") !== "00" || !payload?.data?.qrCodeImage) throw new Error(payload?.message || "Tingee không tạo được mã QR")
+  if (!response) throw new BadRequestError("Tingee không phản hồi khi tạo mã QR")
+  let payload = {}
+  try { payload = response.json || (typeof response.body === "string" ? JSON.parse(response.body) : response.body) || {} } catch (e) { throw new BadRequestError("Tingee trả về dữ liệu QR không hợp lệ") }
+  if (Number(response.statusCode || 0) >= 400 || String(payload.code || "") !== "00" || !payload.data?.qrCodeImage) {
+    const detail = String(payload.message || payload.error || "").trim()
+    throw new BadRequestError("Tingee không tạo được mã QR" + (detail ? ": " + detail : ""))
+  }
   return payload.data.qrCodeImage
 }
 
@@ -760,6 +765,7 @@ routerAdd("POST", "/api/admin/wallets/promo-expiry-bulk", (c) => {
   return c.json(200, { updated })
 })
 
+/* Legacy SePay webhook retained only in source history; Tingee is the sole active provider.
 routerAdd("POST", "/api/webhooks/sepay", (c) => {
   const request = c.request
   const headers = request.header
@@ -868,6 +874,7 @@ routerAdd("POST", "/api/webhooks/sepay", (c) => {
   })
   return c.json(200, response)
 })
+*/
 
 routerAdd("GET", "/api/webhooks/tingee", (c) => c.json(200, { ok: true }))
 routerAdd("OPTIONS", "/api/webhooks/tingee", (c) => c.json(200, { ok: true }))

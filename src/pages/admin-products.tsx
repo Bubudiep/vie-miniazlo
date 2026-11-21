@@ -119,12 +119,17 @@ const validDuration = (value: DurationForm) => {
 
 function errorMessage(error: any) {
   const response = error?.response;
-  const fieldErrors = response?.data && typeof response.data === "object"
-    ? Object.entries(response.data)
-      .map(([field, detail]: [string, any]) => `${field}: ${detail?.message || detail}`)
+  const data = response?.data;
+  const fieldErrors = data && typeof data === "object"
+    ? Object.entries(data)
+      .map(([field, detail]: [string, any]) => {
+        const message = detail?.message || detail?.data?.message || detail;
+        return message && typeof message !== "object" ? `${field}: ${message}` : "";
+      })
+      .filter(Boolean)
       .join("; ")
     : "";
-  return fieldErrors || response?.message || error?.message || "Không thể lưu dữ liệu mặt hàng";
+  return fieldErrors || data?.message || response?.message || error?.message || "Không thể lưu dữ liệu mặt hàng";
 }
 
 function getTimePricing(value?: ProductTimePricing | null): ProductTimePricing {

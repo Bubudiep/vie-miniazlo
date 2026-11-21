@@ -15,7 +15,7 @@ const PAGE_CLASS =
 function AccountPage() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
-  const [paymentSettings, setPaymentSettings] = useState<BillPaymentSettings>({ bankId: "", accountNumber: "", accountName: "", tingeeVirtualAccount: "", sepayVirtualAccount: "", sepayBankCode: "" });
+  const [paymentSettings, setPaymentSettings] = useState<BillPaymentSettings>({ bankId: "", accountNumber: "", accountName: "", tingeeVirtualAccount: "" });
   const [paymentSettingsLoading, setPaymentSettingsLoading] = useState(false);
   const [paymentSettingsError, setPaymentSettingsError] = useState("");
   const [savingPaymentSettings, setSavingPaymentSettings] = useState(false);
@@ -109,7 +109,7 @@ function AccountPage() {
     setSavingPaymentSettings(true);
     setPaymentSettingsError("");
     try {
-      setPaymentSettings(await billPaymentService.saveSettings({ ...paymentSettings, bankId: selectedBank?.bin || "", sepayBankCode: selectedBank?.code || paymentSettings.sepayBankCode }));
+      setPaymentSettings(await billPaymentService.saveSettings({ ...paymentSettings, bankId: selectedBank?.bin || "" }));
       openSnackbar({ text: "Đã lưu tài khoản nhận tiền QR", type: "success", position: "top" });
     } catch (error: any) {
       const message = error?.response?.message || error?.response?.data?.error || error?.message || "Không thể lưu tài khoản nhận tiền";
@@ -251,7 +251,6 @@ function AccountPage() {
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Số tài khoản<input autoComplete="off" inputMode="numeric" value={paymentSettings.accountNumber} onChange={(event) => setPaymentSettings((current) => ({ ...current, accountNumber: event.target.value }))} placeholder="Số tài khoản nhận tiền" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Tên chủ tài khoản<input autoComplete="off" value={paymentSettings.accountName} onChange={(event) => setPaymentSettings((current) => ({ ...current, accountName: event.target.value }))} placeholder="Tên in trên tài khoản ngân hàng" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Tài khoản ảo Tingee dùng cho bill<input autoComplete="off" value={paymentSettings.tingeeVirtualAccount} onChange={(event) => setPaymentSettings((current) => ({ ...current, tingeeVirtualAccount: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} placeholder="Ví dụ: V3SMS1514759797" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /><span className="mt-1 block text-xs text-slate-500">Tingee sẽ đọc giao dịch thanh toán bill qua tài khoản ảo này.</span></label>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Tài khoản ảo SePay (dự phòng)<input autoComplete="off" value={paymentSettings.sepayVirtualAccount} onChange={(event) => setPaymentSettings((current) => ({ ...current, sepayVirtualAccount: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))} placeholder="Không cần nhập khi dùng Tingee" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
               {paymentSettingsError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{paymentSettingsError}</div>}
               <button type="button" disabled={savingPaymentSettings || banksLoading || (hasPaymentDetails && !selectedBank)} onClick={() => void savePaymentSettings()} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-60">{savingPaymentSettings && <Spinner />}Lưu tài khoản nhận tiền</button>
             </>}

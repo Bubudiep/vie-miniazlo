@@ -32,7 +32,6 @@ module.exports = {
       args: "serve --http=127.0.0.1:8390 --dir=pb_data --migrationsDir=pb_migrations --hooksDir=pb_hooks",
       interpreter: "none",
       env: {
-        ...(process.env.SEPAY_WEBHOOK_SECRET ? { SEPAY_WEBHOOK_SECRET: process.env.SEPAY_WEBHOOK_SECRET } : {}),
         ...(process.env.TINGEE_CLIENT_ID ? { TINGEE_CLIENT_ID: process.env.TINGEE_CLIENT_ID } : {}),
         ...(process.env.TINGEE_SECRET ? { TINGEE_SECRET: process.env.TINGEE_SECRET } : {}),
         ...(process.env.TINGEE_WEBHOOK_SECRET ? { TINGEE_WEBHOOK_SECRET: process.env.TINGEE_WEBHOOK_SECRET } : {}),
