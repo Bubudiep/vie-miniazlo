@@ -1700,6 +1700,8 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       );
       amount = calculated.amount;
       timeBreakdown = calculated.breakdown;
+      if (Number.isFinite(stoppedAt) && timeBreakdown.length)
+        timeBreakdown[timeBreakdown.length - 1].endAt = new Date(stoppedAt).toISOString();
     } else amount = Math.round(price * quantity);
     return { amount, quantity, timeBreakdown };
   };
