@@ -873,6 +873,14 @@ routerAdd("GET", "/api/webhooks/tingee", (c) => c.json(200, { ok: true }))
 routerAdd("OPTIONS", "/api/webhooks/tingee", (c) => c.json(200, { ok: true }))
 routerAdd("POST", "/api/webhooks/tingee", (c) => {
   const rawBody = toString(c.request().body, 2 * 1024 * 1024)
+  let validationPayload = null
+  try { validationPayload = JSON.parse(rawBody) } catch (e) {}
+  const plainToken = String(validationPayload?.plainToken || "").trim()
+  if (plainToken) {
+    const validationSecret = String($os.getenv("TINGEE_WEBHOOK_SECRET") || $os.getenv("TINGEE_SECRET") || "").trim()
+    if (!validationSecret) throw new BadRequestError("Chưa cấu hình secret xác thực URL webhook Tingee")
+    return c.json(200, { encryptedToken: $security.hs256(plainToken, validationSecret) })
+  }
   const headers = c.request().header
   const timestamp = String(headers.get("x-request-timestamp") || headers.get("X-Request-Timestamp") || "").trim()
   const signature = String(headers.get("x-signature") || headers.get("X-Signature") || "").trim()

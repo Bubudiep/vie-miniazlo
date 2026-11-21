@@ -35,6 +35,7 @@ module.exports = {
         ...(process.env.SEPAY_WEBHOOK_SECRET ? { SEPAY_WEBHOOK_SECRET: process.env.SEPAY_WEBHOOK_SECRET } : {}),
         ...(process.env.TINGEE_CLIENT_ID ? { TINGEE_CLIENT_ID: process.env.TINGEE_CLIENT_ID } : {}),
         ...(process.env.TINGEE_SECRET ? { TINGEE_SECRET: process.env.TINGEE_SECRET } : {}),
+        ...(process.env.TINGEE_WEBHOOK_SECRET ? { TINGEE_WEBHOOK_SECRET: process.env.TINGEE_WEBHOOK_SECRET } : {}),
         ...(process.env.TINGEE_BANK_NAME ? { TINGEE_BANK_NAME: process.env.TINGEE_BANK_NAME } : {}),
         ...(process.env.TINGEE_API_URL ? { TINGEE_API_URL: process.env.TINGEE_API_URL } : {}),
       },

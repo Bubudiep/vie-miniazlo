@@ -181,7 +181,7 @@ export default function PlayingPage() {
     let active = true;
     billPaymentService.getQr({ billId: bill.id, amount: Math.round(isAdmin ? paymentDueAmount : bill.totalAmount), content: `Bill ${bill.tableName} ${bill.id}` }).then((result) => { if (active) setPaymentQr(result.qrCodeImage); }).catch((error) => { if (active) { setPaymentQr(""); setPaymentSettingsError(errorMessage(error)); } });
     return () => { active = false; };
-  }, [bill?.id, bill?.tableName, bill?.totalAmount, isAdmin, paymentDueAmount, paymentMode, paymentSettings?.tingeeVirtualAccount, paymentSheetOpen]);
+  }, [bill?.id, bill?.tableName, bill?.totalAmount, isAdmin, paymentDiscountEnabled, paymentDiscountInput, paymentMode, paymentSettings?.tingeeVirtualAccount, paymentSheetOpen]);
 
   useEffect(() => {
     if (!operationsOpen || !canManageOperations) return;
