@@ -570,7 +570,12 @@ routerAdd("POST", "/api/table-billing/payment-qr", (c) => {
   const clientId = String($os.getenv("TINGEE_CLIENT_ID") || "").trim();
   const secret = String($os.getenv("TINGEE_SECRET") || "").trim();
   const bankName = String($os.getenv("TINGEE_BANK_NAME") || "BIDV").trim().toUpperCase();
-  if (!clientId || !secret) throw new Error("Tingee chưa được cấu hình trên server");
+  // Keep bill payment usable when the optional Tingee QR service is unavailable.
+  if (!clientId || !secret) {
+    if (!bankId || !/^\d{4,24}$/.test(bankAccountNumber) || !accountName) throw new BadRequestError("Cửa hàng chưa cấu hình đầy đủ tài khoản nhận tiền");
+    const qrParams = "bank=" + encodeURIComponent(bankId) + "&acc=" + encodeURIComponent(bankAccountNumber) + "&template=compact&amount=" + encodeURIComponent(String(amount)) + "&des=" + encodeURIComponent(content) + "&showinfo=true&holder=" + encodeURIComponent(accountName);
+    return c.json(200, { qrCodeImage: "https://vietqr.app/img?" + qrParams, qrCode: "", qrAccount: bankAccountNumber });
+  }
   const timestamp = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace(/[-:TZ.]/g, "").slice(0, 17);
   const body = JSON.stringify({ bankName, accountNumber, amount, content });
   const signature = $security.hs512(timestamp + ":" + body, secret);
@@ -2067,24 +2072,28 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   }
 
   if (action === "public_tables") {
+    const storeId = String(input.storeId || "").trim();
     const tableId = String(input.tableId || "").trim();
-    if (!tableId || !/^[a-zA-Z0-9_-]{10,40}$/.test(tableId)) throw new BadRequestError("Mã bàn không hợp lệ");
-    const sourceTable = $app.findRecordById("tables", tableId);
-    store = String(sourceTable.get("store") || "");
+    if (!storeId && !tableId) throw new BadRequestError("Thiếu mã cửa hàng");
+    if (storeId && !/^[a-zA-Z0-9_-]{10,40}$/.test(storeId)) throw new BadRequestError("Mã cửa hàng không hợp lệ");
+    if (tableId && !/^[a-zA-Z0-9_-]{10,40}$/.test(tableId)) throw new BadRequestError("Mã bàn không hợp lệ");
+    if (storeId) store = storeId;
+    else store = String($app.findRecordById("tables", tableId).get("store") || "");
     if (!store) throw new BadRequestError("Bàn không thuộc cửa hàng");
+    $app.findRecordById("stores", store);
     const tables = $app.findRecordsByFilter("tables", "store = {:store}", "name,created", -1, 0, { store });
     return c.json(200, { ok: true, tables: tables.map((table) => ({ id: table.id, name: table.get("name") || "Bàn" })) });
   }
 
   if (action === "public_switch_table") {
-    const fromTableId = String(input.fromTableId || "").trim();
+    const storeId = String(input.storeId || "").trim();
     const targetTableId = String(input.targetTableId || "").trim();
     const adminPassword = String(input.adminPassword || "");
-    if (!fromTableId || !targetTableId || !adminPassword) throw new BadRequestError("Thiếu thông tin đổi bàn");
-    const sourceTable = $app.findRecordById("tables", fromTableId);
+    if (!storeId || !targetTableId || !adminPassword) throw new BadRequestError("Thiếu thông tin chọn bàn");
+    if (!/^[a-zA-Z0-9_-]{10,40}$/.test(storeId) || !/^[a-zA-Z0-9_-]{10,40}$/.test(targetTableId)) throw new BadRequestError("Mã bàn không hợp lệ");
     const targetTable = $app.findRecordById("tables", targetTableId);
-    store = String(sourceTable.get("store") || "");
-    if (!store || targetTable.get("store") !== store) throw new ForbiddenError("Bàn không thuộc cùng cửa hàng");
+    store = storeId;
+    if (targetTable.get("store") !== store) throw new ForbiddenError("Bàn không thuộc cửa hàng");
     const admins = $app.findRecordsByFilter("users", "store = {:store} && role = 'admin' && is_approved = true", "created", -1, 0, { store });
     if (!admins.some((admin) => admin.validatePassword(adminPassword))) throw new ForbiddenError("Mật khẩu admin không đúng");
     return c.json(200, { ok: true, tableId: targetTable.id });

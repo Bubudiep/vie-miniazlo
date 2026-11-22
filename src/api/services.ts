@@ -31,9 +31,10 @@ export const staffAttendanceService = {
 };
 
 export const auditLogService = {
-  async list(input: { from: string; to: string; actor?: string; page?: number; perPage?: number }) {
+  async list(input: { from: string; to: string; actor?: string; action?: string; page?: number; perPage?: number }) {
     const filters = [`created >= "${input.from.replace(/"/g, "")}"`, `created <= "${input.to.replace(/"/g, "")}"`];
     if (input.actor) filters.push(`actor = "${input.actor.replace(/"/g, "")}"`);
+    if (input.action) filters.push(`action = "${input.action.replace(/"/g, "")}"`);
     return pb.collection("audit_logs").getList<AuditLog>(input.page || 1, input.perPage || 50, { filter: filters.join(" && "), sort: "-created", expand: "actor" });
   },
 };
@@ -208,11 +209,11 @@ export const tableBillingService = {
     const result = await pb.send<{ ok: boolean; storeName: string; tableName: string; payment: Pick<BillPaymentSettings, 'bankId' | 'accountNumber' | 'accountName' | 'tingeeVirtualAccount'>; menu: TableBillProduct[]; bill: TableBill | null }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_detail', tableId } });
     return result;
   },
-  async getPublicTables(tableId: string) {
-    return pb.send<{ ok: boolean; tables: { id: string; name: string }[] }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_tables', tableId } });
+  async getPublicTables(storeId: string) {
+    return pb.send<{ ok: boolean; tables: { id: string; name: string }[] }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_tables', storeId } });
   },
-  async switchPublicTable(fromTableId: string, targetTableId: string, adminPassword: string) {
-    return pb.send<{ ok: boolean; tableId: string }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_switch_table', fromTableId, targetTableId, adminPassword } });
+  async switchPublicTable(storeId: string, targetTableId: string, adminPassword: string) {
+    return pb.send<{ ok: boolean; tableId: string }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_switch_table', storeId, targetTableId, adminPassword } });
   },
   async requestPublicOrder(tableId: string, billId: string, items: { productId: string; quantity: number }[]) {
     return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_order', tableId, billId, items } });

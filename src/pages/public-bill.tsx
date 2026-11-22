@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { Box, Icon, Page, Sheet, Spinner, Text, useSnackbar } from "zmp-ui";
 
-import { tableBillingService } from "@/api/services";
+import { billPaymentService, tableBillingService } from "@/api/services";
 import { roundBillQrAmount } from "@/utils/format";
 import type { TableBill, TableBillProduct } from "@/api/pocketbase";
 import { formatVietnamDateTime } from "@/utils/format";
@@ -11,9 +11,10 @@ const money = (value: number) => `${Math.round(Number(value || 0)).toLocaleStrin
 
 export default function PublicBillPage() {
   const { tableId: routeTableId = "" } = useParams<{ tableId: string }>();
-  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const storeId = searchParams.get("store") || "";
   const [tableId, setTableId] = useState(routeTableId);
-  const tableStorageKey = "billiard:public-table-default";
+  const tableStorageKey = storeId ? `billiard:public-table:${storeId}` : "";
   const [bill, setBill] = useState<TableBill | null>(null);
   const [menu, setMenu] = useState<TableBillProduct[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -48,20 +49,24 @@ export default function PublicBillPage() {
       setLoaded(true);
     });
   useEffect(() => {
-    if (!tableId) { setError("Đường dẫn bill chưa có mã bàn."); setLoaded(true); return; }
-    tableBillingService.getPublicTables(tableId).then((result) => {
+    if (!storeId) { setError("Link xem bill chưa có mã cửa hàng."); setLoaded(true); return; }
+    tableBillingService.getPublicTables(storeId).then((result) => {
       const nextTables = result.tables || [];
       setTables(nextTables);
-      const saved = localStorage.getItem(tableStorageKey);
-      const savedIsSameStore = Boolean(saved && nextTables.some((table) => table.id === saved));
-      if (savedIsSameStore && saved !== tableId) {
-        setLoaded(false);
-        setTableId(saved!);
-        return;
-      }
-      if (!savedIsSameStore) localStorage.setItem(tableStorageKey, tableId);
-      void load();
-    }).catch(() => { setTables([]); void load(); });
+      const saved = tableStorageKey ? localStorage.getItem(tableStorageKey) : "";
+      const preferred = [saved, routeTableId].find((id) => id && nextTables.some((table) => table.id === id)) || "";
+      if (preferred !== tableId) { setLoaded(false); setTableId(preferred); }
+      else if (!preferred) { setBill(null); setLoaded(true); setTablePickerOpen(true); }
+    }).catch((reason) => {
+      setTables([]);
+      setError(reason?.response?.data?.error || "Không thể tải danh sách bàn.");
+      setLoaded(true);
+    });
+  }, [storeId]);
+  useEffect(() => {
+    if (!tableId) return;
+    setLoaded(false);
+    void load();
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 5000);
     return () => window.clearInterval(timer);
   }, [tableId]);
@@ -70,10 +75,9 @@ export default function PublicBillPage() {
     if (nextTableId === tableId) return setTablePickerOpen(false);
     setTableSwitchBusy(true);
     try {
-      await tableBillingService.switchPublicTable(tableId, nextTableId, adminPassword);
+      await tableBillingService.switchPublicTable(storeId, nextTableId, adminPassword);
       setTableId(nextTableId);
-      navigate(`/public-tables/${encodeURIComponent(nextTableId)}`, { replace: true });
-      localStorage.setItem(tableStorageKey, nextTableId);
+      if (tableStorageKey) localStorage.setItem(tableStorageKey, nextTableId);
       setAdminPassword("");
       setTablePickerOpen(false);
       setLoaded(false);
@@ -87,7 +91,7 @@ export default function PublicBillPage() {
     const amount = roundBillQrAmount(bill.requestedAmount || bill.totalAmount);
     if (!Number.isSafeInteger(amount) || amount <= 0) { setPaymentQr(""); return; }
     let active = true;
-    tableBillingService.getQr({ tableId, billId: bill.id, amount, content: `Bill ${bill.tableName} ${bill.id}` }).then((result) => { if (active) setPaymentQr(result.qrCodeImage); }).catch(() => { if (active) setPaymentQr(""); });
+    billPaymentService.getQr({ tableId, billId: bill.id, amount, content: `Bill ${bill.tableName} ${bill.id}` }).then((result) => { if (active) setPaymentQr(result.qrCodeImage); }).catch(() => { if (active) setPaymentQr(""); });
     return () => { active = false; };
   }, [bill?.id, bill?.requestedAmount, bill?.tableName, bill?.totalAmount, payment.accountName, payment.accountNumber, payment.bankId, payment.tingeeVirtualAccount, tableId]);
 
@@ -140,7 +144,7 @@ export default function PublicBillPage() {
     }
     const amount = Math.round(bill?.requestedAmount || bill?.totalAmount || 0);
     const encode = (value: string) => encodeURIComponent(value).replace(/%20/g, "+");
-    const returnUrl = `${window.location.origin}/public-tables/${encodeURIComponent(tableId)}`;
+    const returnUrl = `${window.location.origin}/public-tables?store=${encodeURIComponent(storeId)}`;
     const transferUrl = `https://dl.vietqr.io/pay?app=${encode(appId)}&am=${amount}&tn=${encode(`Bill ${bill?.tableName} ${bill?.id}`)}&ba=${payment.accountNumber}@${transferBankCode.toLowerCase()}&bn=${encode(payment.accountName)}&url=${returnUrl}`;
     setBankPickerOpen(false);
     window.location.assign(transferUrl);
@@ -168,7 +172,7 @@ export default function PublicBillPage() {
 
   if (!loaded && !error) return <Page className="min-h-screen bg-slate-50"><div className="flex justify-center py-20"><Spinner /></div></Page>;
   if (error) return <Page className="min-h-screen bg-slate-50 px-4 py-16"><div className="mx-auto max-w-md rounded-xl border border-rose-200 bg-white p-5 text-center text-rose-800">{error}</div></Page>;
-  if (!bill) return <Page className="min-h-screen bg-slate-50 px-4 py-6"><main className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-5 text-center"><Text.Title size="small">{storeName}</Text.Title><Text size="small" className="mt-2 block text-slate-600">{tableName} hiện chưa có hóa đơn. Trang sẽ tự cập nhật khi có bill mới.</Text><button type="button" onClick={() => setTablePickerOpen(true)} className="mt-4 min-h-11 w-full rounded-lg border border-emerald-700 px-3 text-sm font-semibold text-emerald-800">Chọn bàn khác</button></main><TablePicker /></Page>;
+  if (!bill) return <Page className="min-h-screen bg-slate-50 px-4 py-6"><main className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-5 text-center"><Text.Title size="small">{storeName}</Text.Title><Text size="small" className="mt-2 block text-slate-600">{tableId ? `${tableName} hiện chưa có hóa đơn.` : "Chọn bàn để xem bill hiện tại."}</Text><button type="button" onClick={() => setTablePickerOpen(true)} className="mt-4 min-h-11 w-full rounded-lg border border-emerald-700 px-3 text-sm font-semibold text-emerald-800">Chọn bàn</button></main><TablePicker /></Page>;
 
   const paymentPending = bill.status === "wallet_pending" && bill.paymentMethod === "transfer";
   const otherPaymentPending = bill.status === "wallet_pending" && !paymentPending;

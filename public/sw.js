@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "h2-billiards-";
-const CACHE_NAME = `${CACHE_PREFIX}shell-v2`;
+const CACHE_NAME = `${CACHE_PREFIX}shell-v3`;
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -30,7 +30,10 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request).then((response) => {
-        if (response.ok) caches.open(CACHE_NAME).then((cache) => cache.put("/", response.clone()));
+        if (response.ok) {
+          const cacheResponse = response.clone();
+          void caches.open(CACHE_NAME).then((cache) => cache.put("/", cacheResponse)).catch(() => {});
+        }
         return response;
       }).catch(() => caches.match("/"))
     );
@@ -44,7 +47,8 @@ self.addEventListener("fetch", (event) => {
       if (cached) return cached;
       return fetch(request).then((response) => {
         if (response.ok && response.type === "basic") {
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
+          const cacheResponse = response.clone();
+          void caches.open(CACHE_NAME).then((cache) => cache.put(request, cacheResponse)).catch(() => {});
         }
         return response;
       });
