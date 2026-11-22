@@ -31,6 +31,8 @@ export default function PublicBillPage() {
   const [bankAppsLoading, setBankAppsLoading] = useState(false);
   const [tables, setTables] = useState<{ id: string; name: string }[]>([]);
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
+  const [tableQuery, setTableQuery] = useState("");
+  const [selectedTableId, setSelectedTableId] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [tableSwitchBusy, setTableSwitchBusy] = useState(false);
   const [vietQrBanks, setVietQrBanks] = useState<{ code: string; bin: string }[]>([]);
@@ -72,7 +74,7 @@ export default function PublicBillPage() {
   }, [tableId]);
 
   const selectTable = async (nextTableId: string) => {
-    if (nextTableId === tableId) return setTablePickerOpen(false);
+    if (!nextTableId || nextTableId === tableId) return setTablePickerOpen(false);
     setTableSwitchBusy(true);
     try {
       await tableBillingService.switchPublicTable(storeId, nextTableId, adminPassword);
@@ -84,6 +86,13 @@ export default function PublicBillPage() {
     } catch (reason: any) {
       openSnackbar({ text: reason?.response?.data?.error || "Mật khẩu admin không đúng hoặc không thể đổi bàn", type: "error", position: "top" });
     } finally { setTableSwitchBusy(false); }
+  };
+
+  const openTablePicker = () => {
+    setTableQuery("");
+    setSelectedTableId("");
+    setAdminPassword("");
+    setTablePickerOpen(true);
   };
 
   useEffect(() => {
@@ -172,7 +181,7 @@ export default function PublicBillPage() {
 
   if (!loaded && !error) return <Page className="min-h-screen bg-slate-50"><div className="flex justify-center py-20"><Spinner /></div></Page>;
   if (error) return <Page className="min-h-screen bg-slate-50 px-4 py-16"><div className="mx-auto max-w-md rounded-xl border border-rose-200 bg-white p-5 text-center text-rose-800">{error}</div></Page>;
-  if (!bill) return <Page className="min-h-screen bg-slate-50 px-4 py-6"><main className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-5 text-center"><Text.Title size="small">{storeName}</Text.Title><Text size="small" className="mt-2 block text-slate-600">{tableId ? `${tableName} hiện chưa có hóa đơn.` : "Chọn bàn để xem bill hiện tại."}</Text><button type="button" onClick={() => setTablePickerOpen(true)} className="mt-4 min-h-11 w-full rounded-lg border border-emerald-700 px-3 text-sm font-semibold text-emerald-800">Chọn bàn</button></main><TablePicker /></Page>;
+  if (!bill) return <Page className="min-h-screen bg-slate-50 px-4 py-6"><main className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-5 text-center"><Text.Title size="small">{storeName}</Text.Title><Text size="small" className="mt-2 block text-slate-600">{tableId ? `${tableName} hiện chưa có hóa đơn.` : "Chọn bàn để xem bill hiện tại."}</Text><button type="button" onClick={openTablePicker} className="mt-4 min-h-11 w-full rounded-lg border border-emerald-700 px-3 text-sm font-semibold text-emerald-800">Chọn bàn</button></main><TablePicker /></Page>;
 
   const paymentPending = bill.status === "wallet_pending" && bill.paymentMethod === "transfer";
   const otherPaymentPending = bill.status === "wallet_pending" && !paymentPending;
@@ -187,7 +196,7 @@ export default function PublicBillPage() {
       </header>
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-start justify-between gap-3"><div><Text size="small" className="text-slate-500">Mã bill</Text><Text className="break-all font-semibold text-slate-900">{bill.id}</Text></div><span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">{status}</span></div>
-        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 text-sm"><div><span className="block text-slate-500">Bàn</span><button type="button" onClick={() => setTablePickerOpen(true)} className="mt-1 text-left font-semibold text-emerald-800 underline">{bill.tableName}</button></div><div><span className="block text-slate-500">Thời gian</span><strong>{formatVietnamDateTime(bill.paidAt || bill.startedAt, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</strong></div></div>
+        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 text-sm"><div><span className="block text-slate-500">Bàn</span><button type="button" onClick={openTablePicker} className="mt-1 text-left text-sm text-slate-600 underline">{bill.tableName} · Đổi bàn</button></div><div><span className="block text-slate-500">Thời gian</span><strong>{formatVietnamDateTime(bill.paidAt || bill.startedAt, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</strong></div></div>
       </section>
       {items.some((item) => item.queueStatus === "approval_pending" || item.queueStatus === "rejected") && <section className="rounded-xl border border-amber-200 bg-amber-50 p-4"><Text.Title size="small">Yêu cầu món</Text.Title><div className="mt-2 divide-y divide-amber-200">{items.filter((item) => item.queueStatus === "approval_pending" || item.queueStatus === "rejected").map((item) => <div key={item.id} className="flex justify-between gap-3 py-2 text-sm"><span>{item.name} · {item.quantity} {item.unitLabel}</span><strong className={item.queueStatus === "rejected" ? "text-rose-700" : "text-amber-800"}>{item.queueStatus === "rejected" ? "Đã từ chối" : "Đang chờ xác nhận"}</strong></div>)}</div></section>}
       {bill.status === "open" && <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between gap-3"><div><Text.Title size="small">Menu quán</Text.Title><Text size="xSmall" className="mt-1 block text-slate-500">Chọn món, cửa hàng sẽ xác nhận trước khi tính tiền.</Text></div><button disabled={!menu.length || Boolean(bill.billingPaused)} onClick={() => setMenuOpen(true)} className="min-h-10 shrink-0 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-50">Gọi món</button></div></section>}
@@ -212,6 +221,8 @@ export default function PublicBillPage() {
   </Page>;
 
   function TablePicker() {
-    return <Sheet visible={tablePickerOpen} onClose={() => !tableSwitchBusy && setTablePickerOpen(false)} autoHeight swipeToClose unmountOnClose><Box className="space-y-4 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4"><div className="flex items-center justify-between"><Text.Title size="small">Chọn bàn xem bill</Text.Title><button aria-label="Đóng" onClick={() => setTablePickerOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100"><Icon icon="zi-close" /></button></div><Text size="xSmall" className="text-slate-500">Đổi bàn cần xác nhận bằng mật khẩu admin.</Text><input type="password" autoComplete="current-password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} placeholder="Mật khẩu admin" className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /><div className="max-h-[45vh] space-y-2 overflow-y-auto">{tables.map((table) => <button key={table.id} type="button" disabled={tableSwitchBusy || (table.id !== tableId && !adminPassword)} onClick={() => void selectTable(table.id)} className={`min-h-12 w-full rounded-lg border px-3 text-left text-sm font-semibold ${table.id === tableId ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-white text-slate-800"}`}>{table.name}{table.id === tableId ? " · Đang chọn" : ""}</button>)}</div></Box></Sheet>;
+    const filteredTables = tables.filter((table) => table.name.toLocaleLowerCase("vi").includes(tableQuery.trim().toLocaleLowerCase("vi")));
+    const selectedTable = tables.find((table) => table.id === selectedTableId);
+    return <Sheet visible={tablePickerOpen} onClose={() => !tableSwitchBusy && setTablePickerOpen(false)} autoHeight swipeToClose unmountOnClose><Box className="space-y-4 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4"><div className="flex items-center justify-between"><Text.Title size="small">Chọn bàn xem bill</Text.Title><button aria-label="Đóng" onClick={() => setTablePickerOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100"><Icon icon="zi-close" /></button></div><label className="block text-sm font-medium text-slate-700">Tìm bàn<input autoFocus type="search" value={tableQuery} onChange={(event) => setTableQuery(event.target.value)} placeholder="Nhập tên hoặc số bàn" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label><div className="max-h-[38vh] space-y-2 overflow-y-auto">{filteredTables.length ? filteredTables.map((table) => <button key={table.id} type="button" onClick={() => { setSelectedTableId(table.id); setAdminPassword(""); }} className={`min-h-12 w-full rounded-lg border px-3 text-left text-sm font-semibold ${table.id === selectedTableId ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-white text-slate-800"}`}>{table.name}{table.id === tableId ? " · Đang xem" : ""}</button>) : <Text size="small" className="block py-3 text-slate-500">Không tìm thấy bàn phù hợp.</Text>}</div>{selectedTable && selectedTable.id !== tableId && <div className="space-y-3 border-t border-slate-200 pt-3"><Text size="small" className="text-slate-600">Đã chọn <strong>{selectedTable.name}</strong>. Nhập mật khẩu admin để xác nhận.</Text><input type="password" autoComplete="current-password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} placeholder="Mật khẩu admin" className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /><button type="button" disabled={tableSwitchBusy || !adminPassword} onClick={() => void selectTable(selectedTable.id)} className="min-h-12 w-full rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{tableSwitchBusy ? "Đang xác nhận..." : "Xác nhận chọn bàn"}</button></div>}</Box></Sheet>;
   }
 }
