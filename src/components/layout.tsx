@@ -55,6 +55,7 @@ function AppRoutes() {
       <Suspense fallback={<div role="status" className="flex min-h-screen items-center justify-center px-4 text-sm text-slate-600">Đang tải...</div>}>
         <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/public-tables" element={<PublicBillPage />} />
         <Route path="/public-tables/:tableId" element={<PublicBillPage />} />
         <Route
           path="/"

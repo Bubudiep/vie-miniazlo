@@ -232,6 +232,15 @@ test('public table link shows the latest paid bill and an empty bill slot when n
   assert.equal(result.body.tableName, 'Bàn 1');
 });
 
+test('closed hourly bills calculate through the bill stop time', () => {
+  const state = fixture('staff', {
+    bill: { status: 'paid', stopped_at: '2026-11-16T00:10:00.000Z', paid_at: '2026-11-16T00:11:00.000Z' },
+    item: { billing_unit: 'hour', started_at: '2026-11-16T00:00:00.000Z', unit_price: 60000, time_pricing: JSON.stringify({ intervalMinutes: 60 }) },
+  });
+  const bill = state.act('public_detail', { tableId: 'table00000000001' }, null).body.bill;
+  assert.equal(bill.items[0].lineTotal, 60000);
+});
+
 test('public menu omits hourly products and public orders wait for store approval', () => {
   const state = fixture();
   const menu = state.act('public_detail', { tableId: 'table00000000001' }, null).body.menu;

@@ -822,7 +822,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   const auth = info.auth || c.auth;
   const input = info.body || {};
   const action = String(input.action || "");
-  if (!auth && !["public_detail", "public_request_transfer", "public_order"].includes(action)) throw new UnauthorizedError("Cần đăng nhập");
+  if (!auth && !["public_detail", "public_tables", "public_switch_table", "public_request_transfer", "public_order"].includes(action)) throw new UnauthorizedError("Cần đăng nhập");
   let store = auth ? String(auth.get("store") || "") : "";
   if (!auth && action === "public_order") {
     const tableId = String(input.tableId || "").trim();
@@ -1742,6 +1742,15 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   const lineAmount = (item, at, bill) => {
     return calculateBillItem(item, at, bill);
   };
+  const billCalculationAt = (bill) => {
+    if (["stopped", "paid", "cancelled"].includes(String(bill.get("status")))) {
+      for (const value of [bill.get("stopped_at"), bill.get("paid_at")]) {
+        const timestamp = value ? Date.parse(String(value).replace(" ", "T")) : NaN;
+        if (Number.isFinite(timestamp)) return timestamp;
+      }
+    }
+    return Date.now();
+  };
   const billItems = (app, billId) =>
     app.findRecordsByFilter(
       "table_bill_items",
@@ -1907,9 +1916,10 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   };
   const detail = (app, bill) => {
     const items = billItems(app, bill.id);
+    const calculatedAt = billCalculationAt(bill);
     let total = 0;
     const lines = items.map((item) => {
-      const calc = lineAmount(item, Date.now(), bill);
+      const calc = lineAmount(item, calculatedAt, bill);
       const excluded = ["cancelled", "approval_pending", "rejected"].includes(
         String(item.get("queue_status") || ""),
       );
@@ -2054,6 +2064,30 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       payment = { bankId: settings.get("bank_id") || "", accountNumber: settings.get("account_number") || "", accountName: settings.get("account_name") || "", tingeeVirtualAccount: settings.get("tingee_virtual_account") || "" };
     } catch (e) {}
     return c.json(200, { ok: true, storeName, tableName: table.get("name") || "Bàn", payment, menu, bill: value });
+  }
+
+  if (action === "public_tables") {
+    const tableId = String(input.tableId || "").trim();
+    if (!tableId || !/^[a-zA-Z0-9_-]{10,40}$/.test(tableId)) throw new BadRequestError("Mã bàn không hợp lệ");
+    const sourceTable = $app.findRecordById("tables", tableId);
+    store = String(sourceTable.get("store") || "");
+    if (!store) throw new BadRequestError("Bàn không thuộc cửa hàng");
+    const tables = $app.findRecordsByFilter("tables", "store = {:store}", "name,created", -1, 0, { store });
+    return c.json(200, { ok: true, tables: tables.map((table) => ({ id: table.id, name: table.get("name") || "Bàn" })) });
+  }
+
+  if (action === "public_switch_table") {
+    const fromTableId = String(input.fromTableId || "").trim();
+    const targetTableId = String(input.targetTableId || "").trim();
+    const adminPassword = String(input.adminPassword || "");
+    if (!fromTableId || !targetTableId || !adminPassword) throw new BadRequestError("Thiếu thông tin đổi bàn");
+    const sourceTable = $app.findRecordById("tables", fromTableId);
+    const targetTable = $app.findRecordById("tables", targetTableId);
+    store = String(sourceTable.get("store") || "");
+    if (!store || targetTable.get("store") !== store) throw new ForbiddenError("Bàn không thuộc cùng cửa hàng");
+    const admins = $app.findRecordsByFilter("users", "store = {:store} && role = 'admin' && is_approved = true", "created", -1, 0, { store });
+    if (!admins.some((admin) => admin.validatePassword(adminPassword))) throw new ForbiddenError("Mật khẩu admin không đúng");
+    return c.json(200, { ok: true, tableId: targetTable.id });
   }
 
   if (action === "session_summary") {

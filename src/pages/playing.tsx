@@ -8,7 +8,7 @@ import { billPaymentService, promotionService, tableBillingService, tableService
 import pb, { type BillPaymentSettings, type Promotion, type PromotionSnapshot, type TableBill, type TableBillProduct, type TableMap, type WalletOrder } from "@/api/pocketbase";
 import { useAuth } from "@/contexts/AuthContext";
 import { openBillPrint } from "@/components/bill-print";
-import { formatDuration, formatMoneyInput, formatVietnamDateTime, fromVietnamDateTimeInput, handleMoneyInput, toVietnamDateTimeInput } from "@/utils/format";
+import { formatDuration, formatMoneyInput, formatVietnamDateTime, fromVietnamDateTimeInput, handleMoneyInput, roundBillQrAmount, toVietnamDateTimeInput } from "@/utils/format";
 import { readSessionCache, writeSessionCache } from "@/utils/session-cache";
 
 const money = (value: number) => `${Math.round(Number(value || 0)).toLocaleString("vi-VN")}đ`;
@@ -178,7 +178,7 @@ export default function PlayingPage() {
 
   useEffect(() => {
     if (!paymentSheetOpen || !bill?.id || paymentMode !== "qr" || (!paymentSettings?.tingeeVirtualAccount && !(paymentSettings?.bankId && paymentSettings?.accountNumber && paymentSettings?.accountName))) { setPaymentQr(""); return; }
-    const amount = Math.round(isAdmin ? paymentDueAmount : bill.totalAmount);
+    const amount = roundBillQrAmount(isAdmin ? paymentDueAmount : bill.totalAmount);
     if (!Number.isSafeInteger(amount) || amount <= 0) {
       setPaymentQr("");
       setPaymentSettingsError("Bill chưa có số tiền cần thanh toán để tạo mã QR.");

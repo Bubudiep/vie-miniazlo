@@ -208,6 +208,12 @@ export const tableBillingService = {
     const result = await pb.send<{ ok: boolean; storeName: string; tableName: string; payment: Pick<BillPaymentSettings, 'bankId' | 'accountNumber' | 'accountName' | 'tingeeVirtualAccount'>; menu: TableBillProduct[]; bill: TableBill | null }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_detail', tableId } });
     return result;
   },
+  async getPublicTables(tableId: string) {
+    return pb.send<{ ok: boolean; tables: { id: string; name: string }[] }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_tables', tableId } });
+  },
+  async switchPublicTable(fromTableId: string, targetTableId: string, adminPassword: string) {
+    return pb.send<{ ok: boolean; tableId: string }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_switch_table', fromTableId, targetTableId, adminPassword } });
+  },
   async requestPublicOrder(tableId: string, billId: string, items: { productId: string; quantity: number }[]) {
     return pb.send<{ ok: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_order', tableId, billId, items } });
   },

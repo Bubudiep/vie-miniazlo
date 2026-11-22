@@ -53,6 +53,11 @@ export function formatCurrency(value: string | number): string {
   return `${Math.round(n || 0).toLocaleString("vi-VN")}đ`;
 }
 
+export function roundBillQrAmount(value: number): number {
+  const amount = Math.max(0, Math.round(Number(value) || 0));
+  return amount >= 1000 ? Math.floor(amount / 1000) * 1000 : amount;
+}
+
 export function formatMinutes(value: string | number): string {
   const total = Math.round(
     typeof value === "string" ? parseFloat(value) : value,
