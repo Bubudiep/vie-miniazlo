@@ -35,6 +35,11 @@ function messageOf(error: any, fallback: string) {
   return error?.response?.message || error?.message || fallback;
 }
 
+function isTableMap(value: unknown): value is TableMap {
+  const map = value as Partial<TableMap> | null;
+  return Boolean(map && Array.isArray(map.tables) && Array.isArray(map.activeBills) && map.layout && typeof map.layout === "object");
+}
+
 function normalizeSearch(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
@@ -161,6 +166,7 @@ export default function TablesPage() {
   const seenNotificationsRef = useRef(new Set<string>());
   const openSnackbarRef = useRef(openSnackbar);
   const queueRevisionRef = useRef(revision);
+  const mapRequestRef = useRef(0);
   const viewportRef = useRef<HTMLDivElement>(null);
   const pointersRef = useRef(new Map<number, CanvasPointer>());
   const dragRef = useRef<DragState | null>(null);
@@ -168,6 +174,22 @@ export default function TablesPage() {
   const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
 
   useEffect(() => { openSnackbarRef.current = openSnackbar; }, [openSnackbar]);
+
+  const refreshMap = async (showError = true) => {
+    if (!storeId) return null;
+    const requestId = ++mapRequestRef.current;
+    try {
+      const map = await tableService.getMap();
+      if (!isTableMap(map)) throw new Error("Dữ liệu sơ đồ bàn không hợp lệ");
+      if (requestId !== mapRequestRef.current) return null;
+      setTableMap(map);
+      setError("");
+      return map;
+    } catch (loadError) {
+      if (showError && requestId === mapRequestRef.current && !tableMap) setError(messageOf(loadError, "Không thể tải sơ đồ bàn"));
+      return null;
+    }
+  };
 
   const loadTables = async () => {
     if (!storeId) {
@@ -177,11 +199,8 @@ export default function TablesPage() {
     }
     try {
       setError("");
-      const map = await tableService.getMap();
-      setTableMap(map);
+      await refreshMap();
       setStoredPositions(readDevicePositions(storeId));
-    } catch (loadError) {
-      setError(messageOf(loadError, "Không thể tải sơ đồ bàn"));
     } finally { setLoading(false); }
   };
 
@@ -189,7 +208,7 @@ export default function TablesPage() {
   useEffect(() => {
     if (!storeId || editingLayout) return;
     let active = true;
-    const refresh = () => tableService.getMap().then((map) => { if (active) setTableMap(map); }).catch(() => {});
+    const refresh = () => { if (active) void refreshMap(false); };
     const scheduleRefresh = debounce(refresh, 250);
     const refreshWhenVisible = () => { if (document.visibilityState === "visible") void refresh(); };
     const tablesSubscription = pb.collection("tables").subscribe("*", ({ record }) => { if (record.store === storeId) scheduleRefresh(); });
@@ -208,7 +227,7 @@ export default function TablesPage() {
   useEffect(() => {
     if (queueRevisionRef.current === revision) return;
     queueRevisionRef.current = revision;
-    if (storeId && !editingLayout) tableService.getMap().then(setTableMap).catch(() => {});
+    if (storeId && !editingLayout) void refreshMap(false);
   }, [revision, storeId, editingLayout]);
   useEffect(() => {
     if (!isAdmin || !user?.id || !storeId) return;
@@ -276,8 +295,8 @@ export default function TablesPage() {
     let bill = openBillFor(table.id);
     if (!bill && !isAdmin && table.status !== "available") {
       try {
-        const latestMap = await tableService.getMap();
-        setTableMap(latestMap);
+        const latestMap = await refreshMap(false);
+        if (!latestMap) throw new Error("Không thể tải sơ đồ bàn");
         bill = latestMap.activeBills.find((activeBill) => activeBill.table === table.id);
         if (!bill) {
           const result = await tableService.getActiveBill(table.id);
