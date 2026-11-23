@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Box, Icon, Page, Sheet, Spinner, Text, useSnackbar } from "zmp-ui";
 
@@ -10,6 +10,10 @@ import type { TableBill, TableBillProduct } from "@/api/pocketbase";
 import { formatVietnamDateTime } from "@/utils/format";
 
 const money = (value: number) => `${Math.round(Number(value || 0)).toLocaleString("vi-VN")}đ`;
+const hourQuantity = (value: number) => {
+  const totalMinutes = Math.max(0, Math.round(Number(value || 0) * 60));
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
+};
 
 export default function PublicBillPage() {
   const { tableId: routeTableId = "" } = useParams<{ tableId: string }>();
@@ -34,9 +38,11 @@ export default function PublicBillPage() {
   const [bankAppsLoading, setBankAppsLoading] = useState(false);
   const [tables, setTables] = useState<{ id: string; name: string }[]>([]);
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
+  const [adminPasswordOpen, setAdminPasswordOpen] = useState(false);
   const [tableQuery, setTableQuery] = useState("");
   const [selectedTableId, setSelectedTableId] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
+  const adminPasswordRef = useRef<HTMLInputElement>(null);
   const [tableSwitchBusy, setTableSwitchBusy] = useState(false);
   const [vietQrBanks, setVietQrBanks] = useState<{ code: string; bin: string }[]>([]);
   const { openSnackbar } = useSnackbar();
@@ -86,6 +92,7 @@ export default function PublicBillPage() {
       if (tableStorageKey) localStorage.setItem(tableStorageKey, nextTableId);
       setAdminPassword("");
       setTablePickerOpen(false);
+      setAdminPasswordOpen(false);
       setLoaded(false);
     } catch (reason: any) {
       openSnackbar({ text: reason?.response?.data?.error || "Mật khẩu admin không đúng hoặc không thể đổi bàn", type: "error", position: "top" });
@@ -96,8 +103,14 @@ export default function PublicBillPage() {
     setTableQuery("");
     setSelectedTableId("");
     setAdminPassword("");
+    setAdminPasswordOpen(false);
     setTablePickerOpen(true);
   };
+
+  useEffect(() => {
+    if (!adminPasswordOpen || !selectedTableId || selectedTableId === tableId) return;
+    adminPasswordRef.current?.focus();
+  }, [adminPasswordOpen, selectedTableId, tableId]);
 
   useEffect(() => {
     if (!bill?.id || (!payment.tingeeVirtualAccount && !(payment.bankId && payment.accountNumber && payment.accountName))) { setPaymentQr(""); return; }
@@ -220,7 +233,7 @@ export default function PublicBillPage() {
       </section>
       {items.some((item) => item.queueStatus === "approval_pending" || item.queueStatus === "rejected") && <section className="rounded-xl border border-amber-200 bg-amber-50 p-4"><Text.Title size="small">Yêu cầu món</Text.Title><div className="mt-2 divide-y divide-amber-200">{items.filter((item) => item.queueStatus === "approval_pending" || item.queueStatus === "rejected").map((item) => <div key={item.id} className="flex justify-between gap-3 py-2 text-sm"><span>{item.name} · {item.quantity} {item.unitLabel}</span><strong className={item.queueStatus === "rejected" ? "text-rose-700" : "text-amber-800"}>{item.queueStatus === "rejected" ? "Đã từ chối" : "Đang chờ xác nhận"}</strong></div>)}</div></section>}
       {bill.status === "open" && <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between gap-3"><div><Text.Title size="small">Menu quán</Text.Title><Text size="xSmall" className="mt-1 block text-slate-500">Chọn món, cửa hàng sẽ xác nhận trước khi tính tiền.</Text></div><button disabled={!menu.length || Boolean(bill.billingPaused)} onClick={() => setMenuOpen(true)} className="min-h-10 shrink-0 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-50">Gọi món</button></div></section>}
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><Text.Title size="small">Chi tiết</Text.Title><div className="mt-3 divide-y divide-slate-100">{items.filter((item) => item.lineTotal > 0).map((item) => <div key={item.id} className="flex justify-between gap-3 py-3 text-sm"><div className="min-w-0"><strong className="block break-words text-slate-900">{item.name}</strong><span className="text-slate-500">{item.quantity} {item.unitLabel || "lần"} × {money(item.unitPrice)}</span>{item.billingUnit === "quantity" && item.startedAt && <span className="mt-1 block text-xs text-slate-500">Đặt lúc {formatVietnamDateTime(item.startedAt)}</span>}</div><strong className="shrink-0 text-right">{money(item.lineTotal)}</strong></div>)}</div><div className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-sm"><div className="flex justify-between"><span>Tạm tính</span><strong>{money(bill.grossAmount)}</strong></div><div className="flex justify-between"><span>Khuyến mại</span><strong>-{money(bill.discountAmount)}</strong></div><div className="flex justify-between text-base font-bold text-emerald-800"><span>Tổng thanh toán</span><strong>{money(bill.totalAmount)}</strong></div></div></section>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><Text.Title size="small">Chi tiết</Text.Title><div className="mt-3 divide-y divide-slate-100">{items.filter((item) => item.lineTotal > 0).map((item) => <div key={item.id} className="flex justify-between gap-3 py-3 text-sm"><div className="min-w-0"><strong className="block break-words text-slate-900">{item.name}</strong><span className="text-slate-500">{item.billingUnit === "hour" ? hourQuantity(item.quantity) : `${item.quantity} ${item.unitLabel || "lần"}`} × {money(item.unitPrice)}</span>{item.billingUnit === "quantity" && item.startedAt && <span className="mt-1 block text-xs text-slate-500">Đặt lúc {formatVietnamDateTime(item.startedAt)}</span>}</div><strong className="shrink-0 text-right">{money(item.lineTotal)}</strong></div>)}</div><div className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-sm"><div className="flex justify-between"><span>Tạm tính</span><strong>{money(bill.grossAmount)}</strong></div><div className="flex justify-between"><span>Khuyến mại</span><strong>-{money(bill.discountAmount)}</strong></div><div className="flex justify-between text-base font-bold text-emerald-800"><span>Tổng thanh toán</span><strong>{money(bill.totalAmount)}</strong></div></div></section>
       {bill.status !== "paid" && bill.status !== "cancelled" && <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm"><Text.Title size="small">Thanh toán</Text.Title>{otherPaymentPending ? <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Bill đang chờ cửa hàng duyệt thanh toán ví.</div> : <><Text size="small" className="block text-slate-600">{paymentPending ? `Đang chờ cửa hàng xác nhận đã nhận ${money(bill.requestedAmount)}.` : `Tổng cần thanh toán ${money(bill.totalAmount)}.`}</Text>{qrUrl ? <img src={qrUrl} alt="Mã QR thanh toán hóa đơn" className="mx-auto aspect-square w-56 max-w-full rounded-lg border border-slate-200 bg-white object-contain" /> : <Text size="small" className="text-amber-800">Cửa hàng chưa cấu hình tài khoản nhận chuyển khoản.</Text>}{payment.accountNumber && <Text size="xSmall" className="block text-slate-600">{payment.accountName} · {payment.bankId} · {payment.accountNumber}</Text>}{paymentPending ? <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Yêu cầu đã gửi. Bill sẽ được cập nhật sau khi cửa hàng xác nhận.</div> : <>{bill.paymentError && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{bill.paymentError}</div>}{user?.role === "user" && <button disabled={busy} onClick={() => setWalletPaymentOpen(true)} className="min-h-12 w-full rounded-lg border border-emerald-700 bg-white px-3 text-sm font-semibold text-emerald-800 disabled:opacity-50">Thanh toán bằng ví cá nhân</button>}<div className="grid grid-cols-2 gap-2"><button disabled={!qrUrl} onClick={() => void openBankPicker()} className="min-h-12 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 disabled:opacity-50">Chuyển khoản</button><button disabled={busy || !qrUrl} onClick={() => void requestPayment()} className="min-h-12 rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Đang gửi..." : "Tôi đã chuyển khoản"}</button></div></>}</>}</section>}
       <div className="flex items-center justify-center gap-2 text-center text-xs text-slate-500"><Icon icon="zi-lock" /> Chỉ người có đường link này mới xem được bill</div>
     </main>
@@ -245,11 +258,17 @@ export default function PublicBillPage() {
       </Box>
     </Sheet>
     {TablePicker()}
+    {AdminPasswordPicker()}
   </Page>;
 
   function TablePicker() {
     const filteredTables = tables.filter((table) => table.name.toLocaleLowerCase("vi").includes(tableQuery.trim().toLocaleLowerCase("vi")));
     const selectedTable = tables.find((table) => table.id === selectedTableId);
-    return <Sheet visible={tablePickerOpen} onClose={() => !tableSwitchBusy && setTablePickerOpen(false)} autoHeight swipeToClose unmountOnClose><Box className="space-y-4 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4"><div className="flex items-center justify-between"><Text.Title size="small">Chọn bàn xem bill</Text.Title><button aria-label="Đóng" onClick={() => setTablePickerOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100"><Icon icon="zi-close" /></button></div><label className="block text-sm font-medium text-slate-700">Tìm bàn<input type="search" value={tableQuery} onChange={(event) => setTableQuery(event.target.value)} placeholder="Nhập tên hoặc số bàn" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label><div className="max-h-[38vh] space-y-2 overflow-y-auto">{filteredTables.length ? filteredTables.map((table) => <button key={table.id} type="button" onClick={() => { setSelectedTableId(table.id); setAdminPassword(""); }} className={`min-h-12 w-full rounded-lg border px-3 text-left text-sm font-semibold ${table.id === selectedTableId ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-white text-slate-800"}`}>{table.name}{table.id === tableId ? " · Đang xem" : ""}</button>) : <Text size="small" className="block py-3 text-slate-500">Không tìm thấy bàn phù hợp.</Text>}</div>{selectedTable && selectedTable.id !== tableId && <div className="space-y-3 border-t border-slate-200 pt-3"><Text size="small" className="text-slate-600">Đã chọn <strong>{selectedTable.name}</strong>. Nhập mật khẩu admin để xác nhận.</Text><input type="password" autoComplete="current-password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} placeholder="Mật khẩu admin" className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /><button type="button" disabled={tableSwitchBusy || !adminPassword} onClick={() => void selectTable(selectedTable.id)} className="min-h-12 w-full rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{tableSwitchBusy ? "Đang xác nhận..." : "Xác nhận chọn bàn"}</button></div>}</Box></Sheet>;
+    return <Sheet visible={tablePickerOpen} onClose={() => !tableSwitchBusy && setTablePickerOpen(false)} autoHeight swipeToClose unmountOnClose><Box className="space-y-4 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4"><div className="flex items-center justify-between"><Text.Title size="small">Chọn bàn xem bill</Text.Title><button aria-label="Đóng" onClick={() => setTablePickerOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100"><Icon icon="zi-close" /></button></div><label className="block text-sm font-medium text-slate-700">Tìm bàn<input type="search" value={tableQuery} onChange={(event) => setTableQuery(event.target.value)} placeholder="Nhập tên hoặc số bàn" className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /></label><div className="max-h-[38vh] space-y-2 overflow-y-auto">{filteredTables.length ? filteredTables.map((table) => <button key={table.id} type="button" onClick={() => { setSelectedTableId(table.id); setAdminPassword(""); setTablePickerOpen(false); setAdminPasswordOpen(true); }} className={`min-h-12 w-full rounded-lg border px-3 text-left text-sm font-semibold ${table.id === selectedTableId ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-white text-slate-800"}`}>{table.name}{table.id === tableId ? " · Đang xem" : ""}</button>) : <Text size="small" className="block py-3 text-slate-500">Không tìm thấy bàn phù hợp.</Text>}</div></Box></Sheet>;
+  }
+
+  function AdminPasswordPicker() {
+    const selectedTable = tables.find((table) => table.id === selectedTableId);
+    return <Sheet visible={adminPasswordOpen} onClose={() => !tableSwitchBusy && setAdminPasswordOpen(false)} autoHeight swipeToClose unmountOnClose><Box className="space-y-4 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4"><div className="flex items-center justify-between"><Text.Title size="small">Xác nhận chọn bàn</Text.Title><button aria-label="Đóng nhập mật khẩu" onClick={() => setAdminPasswordOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100"><Icon icon="zi-close" /></button></div><Text size="small" className="text-slate-600">Nhập mật khẩu admin để xem bill của <strong>{selectedTable?.name || "bàn đã chọn"}</strong>.</Text><input ref={adminPasswordRef} type="password" autoComplete="current-password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} placeholder="Mật khẩu admin" className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-base" /><button type="button" disabled={tableSwitchBusy || !adminPassword || !selectedTableId} onClick={() => void selectTable(selectedTableId)} className="min-h-12 w-full rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{tableSwitchBusy ? "Đang xác nhận..." : "Xác nhận"}</button></Box></Sheet>;
   }
 }
