@@ -5,6 +5,7 @@ import { Box, Icon, Page, Sheet, Spinner, Text, useSnackbar } from "zmp-ui";
 import { billPaymentService, tableBillingService } from "@/api/services";
 import { useAuth } from "@/contexts/AuthContext";
 import { roundBillQrAmount } from "@/utils/format";
+import { normalizeTransferContent } from "@/utils/transfer";
 import type { TableBill, TableBillProduct } from "@/api/pocketbase";
 import { formatVietnamDateTime } from "@/utils/format";
 
@@ -103,7 +104,8 @@ export default function PublicBillPage() {
     const amount = roundBillQrAmount(bill.requestedAmount || bill.totalAmount);
     if (!Number.isSafeInteger(amount) || amount <= 0) { setPaymentQr(""); return; }
     let active = true;
-    billPaymentService.getQr({ tableId, billId: bill.id, amount, content: `Bill ${bill.tableName} ${bill.id}` }).then((result) => { if (active) setPaymentQr(result.qrCodeImage); }).catch(() => { if (active) setPaymentQr(""); });
+    const transferContent = normalizeTransferContent(`Bill ${bill.tableName} ${bill.id}`);
+    billPaymentService.getQr({ tableId, billId: bill.id, amount, content: transferContent }).then((result) => { if (active) setPaymentQr(result.qrCodeImage); }).catch(() => { if (active) setPaymentQr(""); });
     return () => { active = false; };
   }, [bill?.id, bill?.requestedAmount, bill?.tableName, bill?.totalAmount, payment.accountName, payment.accountNumber, payment.bankId, payment.tingeeVirtualAccount, tableId]);
 
@@ -171,7 +173,8 @@ export default function PublicBillPage() {
     const amount = Math.round(bill?.requestedAmount || bill?.totalAmount || 0);
     const encode = (value: string) => encodeURIComponent(value).replace(/%20/g, "+");
     const returnUrl = `${window.location.origin}/public-tables?store=${encodeURIComponent(storeId)}`;
-    const transferUrl = `https://dl.vietqr.io/pay?app=${encode(appId)}&am=${amount}&tn=${encode(`Bill ${bill?.tableName} ${bill?.id}`)}&ba=${payment.accountNumber}@${transferBankCode.toLowerCase()}&bn=${encode(payment.accountName)}&url=${returnUrl}`;
+    const transferContent = normalizeTransferContent(`Bill ${bill?.tableName} ${bill?.id}`);
+    const transferUrl = `https://dl.vietqr.io/pay?app=${encode(appId)}&am=${amount}&tn=${encode(transferContent)}&ba=${payment.accountNumber}@${transferBankCode.toLowerCase()}&bn=${encode(payment.accountName)}&url=${returnUrl}`;
     setBankPickerOpen(false);
     window.location.assign(transferUrl);
   };

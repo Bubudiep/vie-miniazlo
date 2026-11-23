@@ -590,7 +590,7 @@ routerAdd("POST", "/api/table-billing/payment-qr", (c) => {
   const billId = String(input.billId || "").trim();
   const tableId = String(input.tableId || "").trim();
   const amount = Number(input.amount);
-  const content = String(input.content || "").trim().slice(0, 120);
+  const content = String(input.content || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d").replace(/\s+/g, "").toUpperCase().slice(0, 120);
   if (!billId || !Number.isSafeInteger(amount) || amount <= 0 || !content) throw new BadRequestError("Thông tin QR thanh toán không hợp lệ");
   let bill;
   try { bill = $app.findRecordById("table_bills", billId); } catch (e) { throw new BadRequestError("Không tìm thấy bill"); }

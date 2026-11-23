@@ -7,6 +7,7 @@ import pb from "@/api/pocketbase";
 import type { WalletSummary, WalletTransaction, WalletTopup, WalletTopupPayment } from "@/api/pocketbase";
 import type { WalletSpinItem, WalletSpinPrize } from "@/api/services";
 import { formatVietnamDate, formatVietnamDateTime, vietnamDateBounds } from "@/utils/format";
+import { normalizeTransferContent } from "@/utils/transfer";
 
 type BankApp = { appId: string; appName: string; appLogo?: string; autofill?: number };
 type TopupResume = { topup: WalletTopup; payment: WalletTopupPayment };
@@ -240,7 +241,7 @@ export default function WalletPage() {
   };
 
   const topupQrUrl = topup && topupPayment
-    ? topupPayment.qrCodeImage || `https://vietqr.app/img?${new URLSearchParams({ bank: topupPayment.bankId, acc: topupPayment.accountNumber, template: "compact", amount: String(topup.amount), des: topup.transferCode, showinfo: "true", holder: topupPayment.accountName })}`
+    ? topupPayment.qrCodeImage || `https://vietqr.app/img?${new URLSearchParams({ bank: topupPayment.bankId, acc: topupPayment.accountNumber, template: "compact", amount: String(topup.amount), des: normalizeTransferContent(topup.transferCode), showinfo: "true", holder: topupPayment.accountName })}`
     : "";
   const statusLabel: Record<string, string> = { pending: "Chờ ngân hàng xác nhận", paid: "Đã cộng tiền", rejected: "Đã từ chối", expired: "Chưa thanh toán" };
 
@@ -248,7 +249,7 @@ export default function WalletPage() {
     if (!topup || !topupPayment) return "";
     const encode = (value: string) => encodeURIComponent(value).replace(/%20/g, "+");
     const returnUrl = `${window.location.origin}/account/wallet?topupId=${topup.id}`;
-    return `https://dl.vietqr.io/pay?app=${encode(appId)}&am=${topup.amount}&tn=${encode(topup.transferCode)}&ba=${topupPayment.accountNumber}@${topupPayment.bankId.toLowerCase()}&bn=${encode(topupPayment.accountName)}&url=${returnUrl}`;
+    return `https://dl.vietqr.io/pay?app=${encode(appId)}&am=${topup.amount}&tn=${encode(normalizeTransferContent(topup.transferCode))}&ba=${topupPayment.accountNumber}@${topupPayment.bankId.toLowerCase()}&bn=${encode(topupPayment.accountName)}&url=${returnUrl}`;
   };
 
   const openBankTransfer = async () => {
