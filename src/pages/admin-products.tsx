@@ -17,6 +17,7 @@ type ProductForm = {
   purchasePrice: string;
   billingMode: "quantity" | "time";
   kind: Product["kind"];
+  requiresPreparation: boolean;
   unitLabel: string;
   description: string;
   interval: DurationForm;
@@ -88,6 +89,7 @@ const emptyForm = (): ProductForm => ({
   purchasePrice: "",
   billingMode: "quantity",
   kind: "goods",
+  requiresPreparation: false,
   unitLabel: "",
   description: "",
   interval: emptyDuration(),
@@ -260,6 +262,7 @@ export default function AdminProductsPage() {
       purchasePrice: String(product.purchase_price ?? ""),
       billingMode: product.billing_unit === "hour" ? "time" : "quantity",
       kind: product.kind || (product.billing_unit === "hour" ? "service" : "goods"),
+      requiresPreparation: product.billing_unit !== "hour" && product.requires_preparation === true,
       unitLabel: product.unit_label || "",
       description: product.description || "",
       interval: durationParts(pricing.intervalMinutes),
@@ -338,6 +341,7 @@ export default function AdminProductsPage() {
         price,
         purchase_price: form.billingMode === "quantity" && form.purchasePrice.trim() ? purchasePrice : 0,
         kind: form.kind,
+        requires_preparation: form.requiresPreparation,
         billing_unit: form.billingMode === "time" ? "hour" as const : "quantity" as const,
         unit_label: form.billingMode === "time" ? "giờ" : form.unitLabel.trim(),
         description: form.description.trim(),
@@ -566,7 +570,8 @@ export default function AdminProductsPage() {
           </div>
         </div>
         <div className="space-y-2"><label className="block text-sm font-medium text-slate-700">Danh mục<select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-3 text-base"><option value="">Chọn danh mục</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><button type="button" onClick={() => setCategorySheetOpen(true)} className="text-sm font-semibold text-emerald-800">Quản lý danh mục</button></div>
-        <fieldset className="space-y-2"><legend className="text-sm font-medium text-slate-700">Loại mặt hàng</legend><div className="grid grid-cols-2 rounded-lg border border-slate-300 bg-slate-100 p-1"><button type="button" aria-pressed={form.billingMode === "quantity"} onClick={() => setForm({ ...form, billingMode: "quantity", kind: form.kind === "service" ? "goods" : form.kind })} className={`min-h-10 rounded-md px-2 text-sm font-semibold ${form.billingMode === "quantity" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600"}`}>Theo số lượng</button><button type="button" aria-pressed={form.billingMode === "time"} onClick={() => setForm({ ...form, billingMode: "time", kind: "service" })} className={`min-h-10 rounded-md px-2 text-sm font-semibold ${form.billingMode === "time" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600"}`}>Theo thời gian</button></div></fieldset>
+        <fieldset className="space-y-2"><legend className="text-sm font-medium text-slate-700">Loại mặt hàng</legend><div className="grid grid-cols-2 rounded-lg border border-slate-300 bg-slate-100 p-1"><button type="button" aria-pressed={form.billingMode === "quantity"} onClick={() => setForm({ ...form, billingMode: "quantity", kind: form.kind === "service" ? "goods" : form.kind })} className={`min-h-10 rounded-md px-2 text-sm font-semibold ${form.billingMode === "quantity" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600"}`}>Theo số lượng</button><button type="button" aria-pressed={form.billingMode === "time"} onClick={() => setForm({ ...form, billingMode: "time", kind: "service", requiresPreparation: false })} className={`min-h-10 rounded-md px-2 text-sm font-semibold ${form.billingMode === "time" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600"}`}>Theo thời gian</button></div></fieldset>
+        {form.billingMode === "quantity" && <label className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800"><input type="checkbox" checked={form.requiresPreparation} onChange={(event) => setForm({ ...form, requiresPreparation: event.target.checked })} className="h-4 w-4 accent-emerald-700" />Mặt hàng cần chế biến</label>}
 
         <label className="block text-sm font-medium text-slate-700">{form.billingMode === "time" ? "Giá giờ thường (VNĐ)" : "Giá bán (VNĐ)"}<input type="text" inputMode="numeric" value={formatMoneyInput(form.price)} onChange={(event) => handleMoneyInput(event, (price) => setForm({ ...form, price }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-base" /></label>
 

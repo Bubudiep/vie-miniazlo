@@ -632,7 +632,7 @@ export default function PlayingPage() {
     try {
       const result = await tableBillingService.recordPrint(bill.id);
       const printable = { ...result.bill, tableName: bill.tableName };
-      if (!openBillPrint(printable, storeName)) throw new Error("Không thể tạo bản in");
+      if (!await openBillPrint(printable, storeName)) throw new Error("Không thể tạo bản in");
       openSnackbar({ text: result.reprinted ? "Đã mở bản in lại" : "Đã mở bản in", type: "success" });
     } catch (error) { openSnackbar({ text: errorMessage(error), type: "error" }); }
   };

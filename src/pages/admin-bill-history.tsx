@@ -78,12 +78,12 @@ export default function AdminBillHistoryPage() {
   const print = async (billId: string) => {
     try {
       const result = await tableBillingService.recordPrint(billId);
-      if (!openBillPrint(result.bill, storeName)) throw new Error("Không thể tạo bản in");
+      if (!await openBillPrint(result.bill, storeName)) throw new Error("Không thể tạo bản in");
       openSnackbar({ text: result.reprinted ? "Đã mở bản in lại" : "Đã mở bản in", type: "success", position: "top" });
     } catch (error) { openSnackbar({ text: messageOf(error), type: "error", position: "top" }); }
   };
 
-  return <Page className="min-h-screen bg-slate-50 pb-[calc(env(safe-area-inset-bottom,0px)+28px)]">
+  return <Page className="min-h-screen bg-slate-50 pb-[calc(env(safe-area-inset-bottom,0px)+120px)]">
     <StoreHeader />
     <main className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4">
       <header className="flex items-center gap-3">

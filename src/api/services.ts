@@ -1,4 +1,4 @@
-import pb, { Store, User, Product, ProductInput, ProductCategory, Table, TableLayout, TableMap, TableBill, TableBillSessionSummary, TableBillCustomer, TableBillProduct, TableBillHistoryEvent, TableBillingReport, AdminDashboardReport, InventoryItem, InventoryMovement, InventorySettings, Customer, WalletOrder, WalletSummary, WalletTransactionPage, WalletUser, WalletTopup, WalletTopupCreateResult, WalletTopupPayment, WalletPromoSettings, XuAdminUser, XuCheckinResult, XuRedemption, XuReferralSummary, XuReward, XuSettings, XuSummary, XuTransactionPage, BillPaymentSettings, AdminNotification, Promotion, CustomerSegmentData, StaffAccount, StaffAttendance, StaffQueueItem, AuditLog } from './pocketbase';
+import pb, { Store, User, Product, ProductInput, ProductCategory, Table, TableLayout, TableMap, TableBill, TableBillSessionSummary, TableBillCustomer, TableBillProduct, TableBillHistoryEvent, TableBillingReport, TableBillProductHistoryItem, AdminDashboardReport, InventoryItem, InventoryMovement, InventorySettings, Customer, WalletOrder, WalletSummary, WalletTransactionPage, WalletUser, WalletTopup, WalletTopupCreateResult, WalletTopupPayment, WalletPromoSettings, XuAdminUser, XuCheckinResult, XuRedemption, XuReferralSummary, XuReward, XuSettings, XuSummary, XuTransactionPage, BillPaymentSettings, AdminNotification, Promotion, CustomerSegmentData, StaffAccount, StaffAttendance, StaffQueueItem, AuditLog } from './pocketbase';
 
 export const registrationAdminService = {
   get() {
@@ -221,6 +221,9 @@ export const tableBillingService = {
   async requestPublicTransfer(tableId: string, billId: string) {
     return pb.send<{ ok: boolean; alreadyRequested: boolean; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_request_transfer', tableId, billId } });
   },
+  async payPublicBillWithWallet(billId: string) {
+    return pb.send<{ ok: boolean; alreadyPaid: boolean; promoUsed?: number; mainUsed?: number; error?: string; bill: TableBill }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_wallet_payment', billId } });
+  },
   async getQueue(history = false) {
     return pb.send<{ items: StaffQueueItem[] }>('/api/table-billing/action', { method: 'POST', body: { action: 'queue_list', history } });
   },
@@ -330,9 +333,13 @@ export const tableBillHistoryService = {
       ...result,
       daily: result.daily || [],
       tables: result.tables || [],
-      products: result.products || [],
+      products: (result.products || []).map((product) => ({ ...product, history: product.history || [] })),
       payments: (result.payments || []).map((payment) => ({ ...payment, items: payment.items || [] })),
     };
+  },
+  async productHistory(input: { productId: string; from: string; to: string }) {
+    const query = new URLSearchParams({ productId: input.productId, from: input.from, to: input.to });
+    return pb.send<{ history: TableBillProductHistoryItem[] }>(`/api/table-billing/product-history?${query.toString()}`, { method: 'GET' });
   },
 };
 

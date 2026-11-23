@@ -85,6 +85,7 @@ function nextFreePosition(positions: Positions, excludedTableId = "", preferred?
 
 function resolvedPositions(tables: Table[], stored: Positions) {
   const result: Positions = {};
+  if (!Object.keys(stored).length) return defaultPositions(tables);
   for (const table of tables) {
     const position = stored[table.id];
     if (isValidPosition(position) && !Object.values(result).some((item) => cellKey(item) === cellKey(position))) result[table.id] = position;
@@ -112,6 +113,14 @@ function arrangeQuickly(tables: Table[], tablesPerRow: number, order: NumberingO
   return Object.fromEntries(tables.map((table, index) => [table.id, order === "row"
     ? { x: index % columns, y: Math.floor(index / columns) }
     : { x: Math.floor(index / rows), y: index % rows }]));
+}
+
+function defaultPositions(tables: Table[]): Positions {
+  const numbered = tables
+    .map((table, index) => ({ table, index, number: numberFromTableName(table.name) }))
+    .sort((a, b) => (a.number === null ? 1 : b.number === null ? -1 : a.number - b.number) || a.index - b.index)
+    .map((item) => item.table);
+  return arrangeQuickly(numbered, 2, "column");
 }
 
 function ElapsedClock({ startedAt, className = "" }: { startedAt: string; className?: string }) {

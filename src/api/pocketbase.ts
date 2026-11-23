@@ -97,6 +97,7 @@ export interface Product {
   price: number;
   purchase_price?: number;
   kind: 'goods' | 'food' | 'drink' | 'service';
+  requires_preparation?: boolean;
   category?: string;
   billing_unit: 'hour' | 'quantity' | 'weight';
   unit_label?: string;
@@ -335,12 +336,20 @@ export interface TableBillingReport {
   daily: { date: string; paidBills: number; cashAmount: number; transferAmount: number; walletAmount: number; totalRevenue: number }[];
   hourly: { hour: string; paidBills: number; cashAmount: number; transferAmount: number; walletAmount: number; totalRevenue: number }[];
   tables: { tableName: string; paidBills: number; totalRevenue: number; cashAmount: number; transferAmount: number; walletAmount: number }[];
-  products: { productId: string; name: string; unitLabel: string; quantity: number; revenue: number; billCount: number }[];
+  products: { productId: string; name: string; unitLabel: string; quantity: number; revenue: number; billCount: number; history: { billId: string; tableName: string; paidAt: string; quantity: number; amount: number }[] }[];
   payments: { id: string; billId: string; tableName: string; amount: number; paymentMethod: "cash" | "transfer" | "wallet"; paidAt: string; actorId: string; actorName: string; items: { productId: string; name: string; category: string; unitLabel: string; quantity: number; amount: number }[] }[];
   accounts: { id: string; name: string }[];
   categories: string[];
   page: number;
   hasMore: boolean;
+}
+
+export interface TableBillProductHistoryItem {
+  billId: string;
+  tableName: string;
+  paidAt: string;
+  quantity: number;
+  amount: number;
 }
 
 export interface InventoryItem {

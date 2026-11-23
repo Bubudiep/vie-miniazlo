@@ -239,6 +239,8 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
   const toDate = parseRange(to, true);
   if (!fromDate || !toDate || fromDate >= toDate)
     throw new BadRequestError("Khoảng thời gian không hợp lệ");
+  if (toDate.getTime() - fromDate.getTime() > 30 * 24 * 60 * 60 * 1000)
+    throw new BadRequestError("Chỉ được lọc tối đa 30 ngày");
   if (!Number.isSafeInteger(page) || page < 1)
     throw new BadRequestError("Trang báo cáo không hợp lệ");
   if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 5000)
@@ -415,6 +417,7 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
         revenue: 0,
         billCount: 0,
         bills: {},
+        history: [],
       };
       product.quantity += item.quantity;
       product.revenue += item.amount;
@@ -422,6 +425,13 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
         product.billCount += 1;
         product.bills[billId] = true;
       }
+      product.history.push({
+        billId,
+        tableName: event.get("table_name") || "Bàn",
+        paidAt,
+        quantity: item.quantity,
+        amount: item.amount,
+      });
       products[key] = product;
     }
   }
@@ -449,6 +459,7 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
         quantity: product.quantity,
         revenue: product.revenue,
         billCount: product.billCount,
+        history: product.history,
       }))
       .sort((a, b) => b.revenue - a.revenue),
     payments: payments.slice(start, start + pageSize),
@@ -457,6 +468,41 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
     page,
     hasMore: start + pageSize < payments.length,
   });
+});
+
+routerAdd("GET", "/api/table-billing/product-history", (c) => {
+  const info = c.requestInfo();
+  const auth = info.auth || c.auth;
+  if (!auth) throw new UnauthorizedError("Cần đăng nhập");
+  if (auth.get("role") !== "admin") throw new ForbiddenError("Chỉ admin mới được xem lịch sử mặt hàng");
+  const store = String(auth.get("store") || "");
+  const query = info.query || {};
+  const productId = String(query.productId || "").trim();
+  const from = String(query.from || "");
+  const to = String(query.to || "");
+  const fromDate = new Date(from);
+  const toDate = new Date(to);
+  if (!store || !productId || !Number.isFinite(fromDate.getTime()) || !Number.isFinite(toDate.getTime()) || fromDate >= toDate)
+    throw new BadRequestError("Tham số lịch sử mặt hàng không hợp lệ");
+  const items = $app.findRecordsByFilter(
+    "table_bill_items",
+    "store = {:store} && product = {:product} && bill.status = 'paid' && bill.paid_at >= {:from} && bill.paid_at < {:to}",
+    "created",
+    -1,
+    0,
+    { store, product: productId, from: fromDate.toISOString().replace("T", " "), to: toDate.toISOString().replace("T", " ") },
+  );
+  const history = items.map((item) => {
+    const bill = $app.findRecordById("table_bills", String(item.get("bill") || ""));
+    return {
+      billId: bill.id,
+      tableName: String(bill.get("table_name") || "Bàn"),
+      paidAt: String(bill.get("paid_at") || ""),
+      quantity: Number(item.get("quantity")) || 0,
+      amount: Math.max(0, Math.round(Number(item.get("line_total")) || 0)),
+    };
+  });
+  return c.json(200, { history });
 });
 
 routerAdd("GET", "/api/table-billing/payment-settings", (c) => {
@@ -827,6 +873,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
   const auth = info.auth || c.auth;
   const input = info.body || {};
   const action = String(input.action || "");
+  const needsPreparation = (product) => product && product.get("billing_unit") !== "hour" && product.get("requires_preparation") === true;
   if (!auth && !["public_detail", "public_tables", "public_switch_table", "public_request_transfer", "public_order"].includes(action)) throw new UnauthorizedError("Cần đăng nhập");
   let store = auth ? String(auth.get("store") || "") : "";
   if (!auth && action === "public_order") {
@@ -2369,10 +2416,14 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       for (const item of items) {
         if (approved && item.get("billing_unit") !== "hour" && item.get("product"))
           ensureProductAvailable(txApp, String(item.get("product")), Number(item.get("quantity")) || 0);
-        item.set("queue_status", approved ? "pending" : "rejected");
+        let product = null;
+        if (item.get("product")) {
+          try { product = txApp.findRecordById("products", item.get("product")); } catch (e) {}
+        }
+        item.set("queue_status", approved ? (needsPreparation(product) ? "pending" : "done") : "rejected");
         if (approved && item.get("billing_unit") === "hour") item.set("started_at", now);
-        if (approved) item.set("queued_at", now);
-        else item.set("queue_cancelled_at", now);
+        if (approved && needsPreparation(product)) item.set("queued_at", now);
+        else if (!approved) item.set("queue_cancelled_at", now);
         txApp.save(item);
         recordEvent(txApp, {
           store,
@@ -2668,8 +2719,10 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
         item.set("started_at", unit === "hour" ? openedAt : "");
         item.set("paused_seconds_at_start", 0);
         item.set("line_total", unit === "hour" ? 0 : Math.round(price * quantity));
-        item.set("queue_status", "pending");
-        item.set("queued_at", openedAt);
+        if (needsPreparation(product)) {
+          item.set("queue_status", "pending");
+          item.set("queued_at", openedAt);
+        }
         txApp.save(item);
         recordEvent(txApp, {
           store, billId: bill.id, tableName, category: "action",
@@ -3207,8 +3260,13 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
         item.set("started_at", unit === "hour" && !approvalRequired ? selectedAt : "");
         item.set("paused_seconds_at_start", Number(bill.get("paused_seconds")) || 0);
         item.set("line_total", unit === "hour" || approvalRequired ? 0 : Math.round(price * quantity));
-        item.set("queue_status", approvalRequired ? "approval_pending" : "pending");
-        item.set("queued_at", selectedAt);
+        if (approvalRequired) {
+          item.set("queue_status", "approval_pending");
+          item.set("queued_at", selectedAt);
+        } else if (needsPreparation(product)) {
+          item.set("queue_status", "pending");
+          item.set("queued_at", selectedAt);
+        }
         txApp.save(item);
         recordEvent(txApp, {
           store, billId: bill.id, tableName: displayTableName(txApp, bill.get("table")),
@@ -3804,8 +3862,10 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
     });
   }
 
-  if (action === "approve_wallet") {
-    requireBillOperator();
+  if (action === "approve_wallet" || action === "public_wallet_payment") {
+    const publicWalletPayment = action === "public_wallet_payment";
+    if (publicWalletPayment && (!auth || auth.get("role") !== "user")) throw new ForbiddenError("Chỉ tài khoản khách mới được thanh toán bằng ví");
+    if (!publicWalletPayment) requireBillOperator();
     const discountPercent = paymentDiscountPercent();
     const discountNote = paymentDiscountNote();
     let result;
@@ -3820,13 +3880,14 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       const stoppedPaymentPending =
         bill.get("status") === "stopped" &&
         Boolean(bill.getString("wallet_requested_at"));
-      if (bill.get("status") !== "wallet_pending" && !stoppedPaymentPending)
+      if (!publicWalletPayment && bill.get("status") !== "wallet_pending" && !stoppedPaymentPending)
         throw new BadRequestError("Hóa đơn chưa có yêu cầu thanh toán ví");
-      if (bill.get("payment_method") !== "wallet")
+      if (!publicWalletPayment && bill.get("payment_method") !== "wallet")
         throw new BadRequestError("Hóa đơn đang chờ xác nhận chuyển khoản");
-      const customerId = String(
-        bill.get("payment_requester") || bill.get("customer") || "",
-      );
+      if (publicWalletPayment && !["open", "stopped"].includes(String(bill.get("status")))) throw new BadRequestError("Hóa đơn không thể thanh toán bằng ví");
+      if (publicWalletPayment && !canViewBill(txApp, bill, auth.id)) throw new ForbiddenError("Chỉ khách thuộc phiên mới được thanh toán hóa đơn này");
+      if (publicWalletPayment) ensureOrderRequestsResolved(txApp, bill);
+      const customerId = publicWalletPayment ? auth.id : String(bill.get("payment_requester") || bill.get("customer") || "");
       if (!customerId)
         throw new BadRequestError(
           "Không tìm thấy khách gửi yêu cầu thanh toán ví",
@@ -3874,10 +3935,9 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
         }
       }
 
-      const grossTotal =
-        Number(bill.get("gross_amount")) ||
-        Number(bill.get("requested_amount")) ||
-        0;
+      const grossTotal = publicWalletPayment && bill.get("status") === "open"
+        ? freezeBill(txApp, bill, Date.now())
+        : Number(bill.get("gross_amount")) || Number(bill.get("requested_amount")) || 0;
       const applied = recalculatePromotion(txApp, bill, Date.now(), grossTotal);
       discountAmount = applied.result ? applied.result.discountAmount : 0;
       const amountBeforePaymentDiscount = applied.result
@@ -4016,6 +4076,10 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
           ...(discountNote ? { paymentDiscountNote: discountNote } : {}),
         },
       });
+      if (publicWalletPayment) {
+        notifyAdmins(txApp, store, "table_bill_wallet", "Khách đã thanh toán bằng ví", "Khách đã thanh toán " + String(total).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "đ cho " + displayTableName(txApp, bill.get("table")), bill.id);
+        publishStaffQueue(txApp, store, auth.id, "payment");
+      }
       result = {
         ok: true,
         alreadyPaid: false,
