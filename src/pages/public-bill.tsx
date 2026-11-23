@@ -201,7 +201,7 @@ export default function PublicBillPage() {
 
   if (!loaded && !error) return <Page className="min-h-screen bg-slate-50"><div className="flex justify-center py-20"><Spinner /></div></Page>;
   if (error) return <Page className="min-h-screen bg-slate-50 px-4 py-16"><div className="mx-auto max-w-md rounded-xl border border-rose-200 bg-white p-5 text-center text-rose-800">{error}</div></Page>;
-  if (!bill) return <Page className="min-h-screen bg-slate-50 px-4 py-6"><main className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-5 text-center"><Text.Title size="small">{storeName}</Text.Title><Text size="small" className="mt-2 block text-slate-600">{tableId ? `${tableName} hiện chưa có hóa đơn.` : "Chọn bàn để xem bill hiện tại."}</Text><button type="button" onClick={openTablePicker} className="mt-4 min-h-11 w-full rounded-lg border border-emerald-700 px-3 text-sm font-semibold text-emerald-800">Chọn bàn</button></main><TablePicker /></Page>;
+  if (!bill) return <Page className="min-h-screen bg-slate-50 px-4 py-6"><main className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-5 text-center"><Text.Title size="small">{storeName}</Text.Title><Text size="small" className="mt-2 block text-slate-600">{tableId ? `${tableName} hiện chưa có hóa đơn.` : "Chọn bàn để xem bill hiện tại."}</Text><button type="button" onClick={openTablePicker} className="mt-4 min-h-11 w-full rounded-lg border border-emerald-700 px-3 text-sm font-semibold text-emerald-800">Chọn bàn</button></main>{TablePicker()}</Page>;
 
   const paymentPending = bill.status === "wallet_pending" && bill.paymentMethod === "transfer";
   const otherPaymentPending = bill.status === "wallet_pending" && !paymentPending;
@@ -244,7 +244,7 @@ export default function PublicBillPage() {
         <button type="button" disabled={busy} onClick={() => void payWithWallet()} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{busy && <Spinner />}{busy ? "Đang thanh toán..." : "Xác nhận thanh toán"}</button>
       </Box>
     </Sheet>
-    <TablePicker />
+    {TablePicker()}
   </Page>;
 
   function TablePicker() {
