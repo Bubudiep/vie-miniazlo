@@ -945,7 +945,7 @@ routerAdd("POST", "/api/wallet/topups", (c) => {
   const paymentBankId = bankId
   const paymentAccountNumber = virtualAccount || bankAccountNumber
   const createQr = (accountNumber, qrAmount, content) => {
-    content = String(content || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d").replace(/\s+/g, "").toUpperCase().slice(0, 120)
+    content = String(content || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, (character) => character === "Đ" ? "D" : "d").slice(0, 120)
     if (!virtualAccount) {
       const qrParams = "bank=" + encodeURIComponent(bankId) + "&acc=" + encodeURIComponent(bankAccountNumber) + "&template=compact&amount=" + encodeURIComponent(String(qrAmount)) + "&des=" + encodeURIComponent(content) + "&showinfo=true&holder=" + encodeURIComponent(settingsRecord.get("account_name") || "")
       return "https://vietqr.app/img?" + qrParams
