@@ -22,6 +22,7 @@ export default function PublicBillPage() {
   const [tableId, setTableId] = useState(routeTableId);
   const tableStorageKey = storeId ? `billiard:public-table:${storeId}` : "";
   const [bill, setBill] = useState<TableBill | null>(null);
+  const [unpaidBills, setUnpaidBills] = useState<TableBill[]>([]);
   const [menu, setMenu] = useState<TableBillProduct[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [menuOpen, setMenuOpen] = useState(false);
@@ -29,6 +30,9 @@ export default function PublicBillPage() {
   const [tableName, setTableName] = useState("Bàn");
   const [payment, setPayment] = useState({ bankId: "", accountNumber: "", accountName: "", tingeeVirtualAccount: "" });
   const [paymentQr, setPaymentQr] = useState("");
+  const [billQrs, setBillQrs] = useState<Record<string, string>>({});
+  const [combinedPaymentQr, setCombinedPaymentQr] = useState("");
+  const [qrSelection, setQrSelection] = useState<"current" | "all">("current");
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -50,11 +54,16 @@ export default function PublicBillPage() {
 
   const load = () => tableBillingService.getPublicDetail(tableId).then((result) => {
       setError("");
-      setBill(result.bill ? { ...result.bill, items: Array.isArray(result.bill.items) ? result.bill.items : [] } : null);
+      const normalizedUnpaidBills = (result.unpaidBills || []).map((item) => ({ ...item, items: Array.isArray(item.items) ? item.items : [] }));
+      setUnpaidBills(normalizedUnpaidBills);
+      const latest = result.bill ? { ...result.bill, items: Array.isArray(result.bill.items) ? result.bill.items : [] } : null;
+      setBill(latest && !["paid", "cancelled"].includes(latest.status) ? latest : normalizedUnpaidBills[0] || latest);
       setMenu(result.menu || []);
       setStoreName(result.storeName || "H2 Billiards");
       setTableName(result.tableName || "Bàn");
-      setPayment(result.payment || { bankId: "", accountNumber: "", accountName: "", tingeeVirtualAccount: "" });
+      const nextPayment = result.payment || { bankId: "", accountNumber: "", accountName: "", tingeeVirtualAccount: "" };
+      billPaymentService.cacheSettings(storeId, nextPayment);
+      setPayment(nextPayment);
       setLoaded(true);
     }).catch((reason) => {
       setError(reason?.response?.data?.error || "Không tìm thấy hóa đơn hoặc đường dẫn đã hết hiệu lực.");
@@ -62,6 +71,8 @@ export default function PublicBillPage() {
     });
   useEffect(() => {
     if (!storeId) { setError("Link xem bill chưa có mã cửa hàng."); setLoaded(true); return; }
+    const cachedPayment = billPaymentService.getCachedSettings(storeId);
+    if (cachedPayment) setPayment(cachedPayment);
     tableBillingService.getPublicTables(storeId).then((result) => {
       const nextTables = result.tables || [];
       setTables(nextTables);
@@ -113,14 +124,22 @@ export default function PublicBillPage() {
   }, [adminPasswordOpen, selectedTableId, tableId]);
 
   useEffect(() => {
-    if (!bill?.id || (!payment.tingeeVirtualAccount && !(payment.bankId && payment.accountNumber && payment.accountName))) { setPaymentQr(""); return; }
-    const amount = roundBillQrAmount(bill.requestedAmount || bill.totalAmount);
-    if (!Number.isSafeInteger(amount) || amount <= 0) { setPaymentQr(""); return; }
+    if (!unpaidBills.length || (!payment.tingeeVirtualAccount && !(payment.bankId && payment.accountNumber && payment.accountName))) {
+      setPaymentQr(""); setBillQrs({}); setCombinedPaymentQr(""); return;
+    }
     let active = true;
-    const transferContent = normalizeTransferContent(`Bill ${bill.tableName} ${bill.id}`);
-    billPaymentService.getQr({ tableId, billId: bill.id, amount, content: transferContent }).then((result) => { if (active) setPaymentQr(result.qrCodeImage); }).catch(() => { if (active) setPaymentQr(""); });
+    const createQr = (item: TableBill, amount: number, content: string) => billPaymentService.getQrFast({ tableId, billId: item.id, amount, content }, payment).then((result) => [item.id, result.qrCodeImage] as const).catch(() => [item.id, ""] as const);
+    const billRequests = unpaidBills.map((item) => createQr(item, roundBillQrAmount(item.requestedAmount || item.totalAmount), normalizeTransferContent(`Bill ${item.tableName} ${item.id}`)));
+    const totalAmount = roundBillQrAmount(unpaidBills.reduce((sum, item) => sum + (item.requestedAmount || item.totalAmount), 0));
+    Promise.all([Promise.all(billRequests), createQr(unpaidBills[0], totalAmount, normalizeTransferContent(`Thanh toan tat ca bill ${unpaidBills.map((item) => item.id).join(" ")}`))]).then(([results, combined]) => {
+      if (!active) return;
+      const next = Object.fromEntries(results);
+      setBillQrs(next);
+      setPaymentQr(bill ? next[bill.id] || "" : "");
+      setCombinedPaymentQr(combined[1]);
+    });
     return () => { active = false; };
-  }, [bill?.id, bill?.requestedAmount, bill?.tableName, bill?.totalAmount, payment.accountName, payment.accountNumber, payment.bankId, payment.tingeeVirtualAccount, tableId]);
+  }, [bill?.id, payment.accountName, payment.accountNumber, payment.bankId, payment.tingeeVirtualAccount, tableId, unpaidBills]);
 
   const requestPayment = async () => {
     setBusy(true);
@@ -220,7 +239,10 @@ export default function PublicBillPage() {
   const otherPaymentPending = bill.status === "wallet_pending" && !paymentPending;
   const status = bill.status === "paid" ? "Đã thanh toán" : bill.status === "cancelled" ? "Đã hủy" : paymentPending ? "Chờ xác nhận" : otherPaymentPending ? "Chờ duyệt ví" : bill.status === "stopped" ? "Chưa thanh toán" : "Đang sử dụng";
   const items = Array.isArray(bill.items) ? bill.items : [];
-  const qrUrl = paymentQr;
+  const qrUrl = qrSelection === "all" ? combinedPaymentQr : paymentQr;
+  const qrAmount = qrSelection === "all"
+    ? unpaidBills.reduce((sum, item) => sum + (item.requestedAmount || item.totalAmount), 0)
+    : bill?.requestedAmount || bill?.totalAmount || 0;
   return <Page className="min-h-screen bg-slate-50 px-4 py-6">
     <main className="mx-auto max-w-md space-y-4 pb-6">
       <header className="rounded-xl bg-emerald-700 px-4 py-5 text-center text-white shadow-sm">
@@ -234,7 +256,8 @@ export default function PublicBillPage() {
       {items.some((item) => item.queueStatus === "approval_pending" || item.queueStatus === "rejected") && <section className="rounded-xl border border-amber-200 bg-amber-50 p-4"><Text.Title size="small">Yêu cầu món</Text.Title><div className="mt-2 divide-y divide-amber-200">{items.filter((item) => item.queueStatus === "approval_pending" || item.queueStatus === "rejected").map((item) => <div key={item.id} className="flex justify-between gap-3 py-2 text-sm"><span>{item.name} · {item.quantity} {item.unitLabel}</span><strong className={item.queueStatus === "rejected" ? "text-rose-700" : "text-amber-800"}>{item.queueStatus === "rejected" ? "Đã từ chối" : "Đang chờ xác nhận"}</strong></div>)}</div></section>}
       {bill.status === "open" && <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between gap-3"><div><Text.Title size="small">Menu quán</Text.Title><Text size="xSmall" className="mt-1 block text-slate-500">Chọn món, cửa hàng sẽ xác nhận trước khi tính tiền.</Text></div><button disabled={!menu.length || Boolean(bill.billingPaused)} onClick={() => setMenuOpen(true)} className="min-h-10 shrink-0 rounded-lg bg-emerald-700 px-4 text-sm font-semibold text-white disabled:opacity-50">Gọi món</button></div></section>}
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><Text.Title size="small">Chi tiết</Text.Title><div className="mt-3 divide-y divide-slate-100">{items.filter((item) => item.lineTotal > 0).map((item) => <div key={item.id} className="flex justify-between gap-3 py-3 text-sm"><div className="min-w-0"><strong className="block break-words text-slate-900">{item.name}</strong><span className="text-slate-500">{item.billingUnit === "hour" ? hourQuantity(item.quantity) : `${item.quantity} ${item.unitLabel || "lần"}`} × {money(item.unitPrice)}</span>{item.billingUnit === "quantity" && item.startedAt && <span className="mt-1 block text-xs text-slate-500">Đặt lúc {formatVietnamDateTime(item.startedAt)}</span>}</div><strong className="shrink-0 text-right">{money(item.lineTotal)}</strong></div>)}</div><div className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-sm"><div className="flex justify-between"><span>Tạm tính</span><strong>{money(bill.grossAmount)}</strong></div><div className="flex justify-between"><span>Khuyến mại</span><strong>-{money(bill.discountAmount)}</strong></div><div className="flex justify-between text-base font-bold text-emerald-800"><span>Tổng thanh toán</span><strong>{money(bill.totalAmount)}</strong></div></div></section>
-      {bill.status !== "paid" && bill.status !== "cancelled" && <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm"><Text.Title size="small">Thanh toán</Text.Title>{otherPaymentPending ? <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Bill đang chờ cửa hàng duyệt thanh toán ví.</div> : <><Text size="small" className="block text-slate-600">{paymentPending ? `Đang chờ cửa hàng xác nhận đã nhận ${money(bill.requestedAmount)}.` : `Tổng cần thanh toán ${money(bill.totalAmount)}.`}</Text>{qrUrl ? <img src={qrUrl} alt="Mã QR thanh toán hóa đơn" className="mx-auto aspect-square w-56 max-w-full rounded-lg border border-slate-200 bg-white object-contain" /> : <Text size="small" className="text-amber-800">Cửa hàng chưa cấu hình tài khoản nhận chuyển khoản.</Text>}{payment.accountNumber && <Text size="xSmall" className="block text-slate-600">{payment.accountName} · {payment.bankId} · {payment.accountNumber}</Text>}{paymentPending ? <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Yêu cầu đã gửi. Bill sẽ được cập nhật sau khi cửa hàng xác nhận.</div> : <>{bill.paymentError && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{bill.paymentError}</div>}{user?.role === "user" && <button disabled={busy} onClick={() => setWalletPaymentOpen(true)} className="min-h-12 w-full rounded-lg border border-emerald-700 bg-white px-3 text-sm font-semibold text-emerald-800 disabled:opacity-50">Thanh toán bằng ví cá nhân</button>}<div className="grid grid-cols-2 gap-2"><button disabled={!qrUrl} onClick={() => void openBankPicker()} className="min-h-12 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 disabled:opacity-50">Chuyển khoản</button><button disabled={busy || !qrUrl} onClick={() => void requestPayment()} className="min-h-12 rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Đang gửi..." : "Tôi đã chuyển khoản"}</button></div></>}</>}</section>}
+      {unpaidBills.length > 1 && <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div><Text.Title size="small">Các bill chưa thanh toán</Text.Title><Text size="xSmall" className="mt-1 block text-slate-500">Mỗi bill có một mã QR riêng. Bạn cũng có thể chọn gộp tất cả ở phần thanh toán.</Text></div><div className="divide-y divide-slate-100">{unpaidBills.map((item) => <div key={item.id} className="flex items-center gap-3 py-3"><div className="min-w-0 flex-1 text-left"><strong className="block truncate text-sm text-slate-900">{item.tableName}</strong><span className="block text-xs text-slate-500">Bill {item.id} · {money(item.requestedAmount || item.totalAmount)}</span></div>{billQrs[item.id] ? <img src={billQrs[item.id]} alt={`Mã QR bill ${item.id}`} className="h-20 w-20 rounded-md border border-slate-200 bg-white object-contain" /> : <span className="text-xs text-slate-400">Đang tạo QR</span>}</div>)}</div></section>}
+      {bill.status !== "paid" && bill.status !== "cancelled" && <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm"><Text.Title size="small">Thanh toán</Text.Title>{otherPaymentPending ? <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Bill đang chờ cửa hàng duyệt thanh toán ví.</div> : <><Text size="small" className="block text-slate-600">{paymentPending ? `Đang chờ cửa hàng xác nhận đã nhận ${money(bill.requestedAmount)}.` : `Tổng cần thanh toán ${money(qrAmount)}.`}</Text>{unpaidBills.length > 1 && <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1"><button type="button" onClick={() => setQrSelection("current")} className={`min-h-10 rounded-md px-2 text-sm font-semibold ${qrSelection === "current" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600"}`}>Bill này</button><button type="button" onClick={() => setQrSelection("all")} className={`min-h-10 rounded-md px-2 text-sm font-semibold ${qrSelection === "all" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600"}`}>Tất cả bill</button></div>}{qrSelection === "all" && <div className="rounded-lg bg-emerald-50 p-3 text-left text-sm text-emerald-900">Đang gộp {unpaidBills.length} bill chưa thanh toán: <strong>{money(qrAmount)}</strong></div>}{qrUrl ? <img src={qrUrl} alt={`Mã QR thanh toán ${qrSelection === "all" ? "tất cả bill" : "bill hiện tại"}`} className="mx-auto aspect-square w-56 max-w-full rounded-lg border border-slate-200 bg-white object-contain" /> : <Text size="small" className="text-amber-800">Cửa hàng chưa cấu hình tài khoản nhận chuyển khoản.</Text>}{payment.accountNumber && <Text size="xSmall" className="block text-slate-600">{payment.accountName} · {payment.bankId} · {payment.accountNumber}</Text>}{qrSelection === "current" && paymentPending ? <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Yêu cầu đã gửi. Bill sẽ được cập nhật sau khi cửa hàng xác nhận.</div> : <>{bill.paymentError && <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{bill.paymentError}</div>}{user?.role === "user" && qrSelection === "current" && <button disabled={busy} onClick={() => setWalletPaymentOpen(true)} className="min-h-12 w-full rounded-lg border border-emerald-700 bg-white px-3 text-sm font-semibold text-emerald-800 disabled:opacity-50">Thanh toán bằng ví cá nhân</button>}{qrSelection === "current" && <div className="grid grid-cols-2 gap-2"><button disabled={!qrUrl} onClick={() => void openBankPicker()} className="min-h-12 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 disabled:opacity-50">Chuyển khoản</button><button disabled={busy || !qrUrl} onClick={() => void requestPayment()} className="min-h-12 rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Đang gửi..." : "Tôi đã chuyển khoản"}</button></div>}</>}</>}</section>}
       <div className="flex items-center justify-center gap-2 text-center text-xs text-slate-500"><Icon icon="zi-lock" /> Chỉ người có đường link này mới xem được bill</div>
     </main>
     <Sheet visible={menuOpen} onClose={() => busy ? undefined : setMenuOpen(false)} autoHeight swipeToClose unmountOnClose>

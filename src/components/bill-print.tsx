@@ -13,7 +13,7 @@ export async function openBillPrint(bill: TableBill, storeName: string | null) {
       const settings = await billPaymentService.getSettings();
       const amount = Math.round(Number(bill.totalAmount));
       if (amount > 0 && Number.isSafeInteger(amount) && (settings.tingeeVirtualAccount || (settings.bankId && settings.accountNumber && settings.accountName))) {
-        qrCodeImage = (await billPaymentService.getQr({ billId: bill.id, amount, content: `Bill ${bill.tableName} ${bill.id}` })).qrCodeImage;
+        qrCodeImage = (await billPaymentService.getQrFast({ billId: bill.id, amount, content: `Bill ${bill.tableName} ${bill.id}` }, settings)).qrCodeImage;
       }
     } catch {
       // Printing the bill should still work when QR generation is unavailable.

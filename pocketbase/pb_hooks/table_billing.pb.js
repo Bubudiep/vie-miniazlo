@@ -2092,10 +2092,15 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       throw new BadRequestError("Mã bàn không hợp lệ");
     const table = $app.findRecordById("tables", tableId);
     store = String(table.get("store") || "");
-    const bills = $app.findRecordsByFilter("table_bills", "store = {:store} && table = {:table}", "-created", 1, 0, { store, table: tableId });
+    const bills = $app.findRecordsByFilter("table_bills", "store = {:store} && table = {:table}", "-created", -1, 0, { store, table: tableId });
     const latestBill = bills[0] || null;
     const bill = latestBill || null;
     const value = bill ? detail($app, bill) : null;
+    const unpaidBills = bill
+      ? sessionBills($app, bill)
+        .map((sessionBill) => detail($app, sessionBill))
+        .filter((sessionBill) => !["paid", "cancelled"].includes(sessionBill.status))
+      : [];
     const menu = $app.findRecordsByFilter("products", "store = {:store} && is_active = true && billing_unit != 'hour'", "category,name", -1, 0, { store }).map((product) => ({
       id: product.id,
       store,
@@ -2115,7 +2120,7 @@ routerAdd("POST", "/api/table-billing/action", (c) => {
       const settings = $app.findFirstRecordByFilter("bill_payment_settings", "store = {:store}", { store });
       payment = { bankId: settings.get("bank_id") || "", accountNumber: settings.get("account_number") || "", accountName: settings.get("account_name") || "", tingeeVirtualAccount: settings.get("tingee_virtual_account") || "" };
     } catch (e) {}
-    return c.json(200, { ok: true, storeName, tableName: table.get("name") || "Bàn", payment, menu, bill: value });
+    return c.json(200, { ok: true, storeName, tableName: table.get("name") || "Bàn", payment, menu, bill: value, unpaidBills });
   }
 
   if (action === "public_tables") {

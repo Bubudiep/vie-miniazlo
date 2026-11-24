@@ -166,7 +166,12 @@ export default function PlayingPage() {
     let active = true;
     setPaymentSettingsLoading(true);
     setPaymentSettingsError("");
-    billPaymentService.getSettings().then((settings) => {
+    const cachedSettings = billPaymentService.getCachedSettings(user?.store);
+    if (cachedSettings) {
+      setPaymentSettings(cachedSettings);
+      setPaymentSettingsLoading(false);
+    }
+    billPaymentService.getSettings(user?.store).then((settings) => {
       if (active) setPaymentSettings(settings);
     }).catch((error) => {
       if (active) setPaymentSettingsError(errorMessage(error));
@@ -186,7 +191,7 @@ export default function PlayingPage() {
     }
     setPaymentSettingsError("");
     let active = true;
-    billPaymentService.getQr({ billId: bill.id, amount, content: `Bill ${bill.tableName} ${bill.id}` }).then((result) => { if (active) setPaymentQr(result.qrCodeImage); }).catch((error) => { if (active) { setPaymentQr(""); setPaymentSettingsError(errorMessage(error)); } });
+    billPaymentService.getQrFast({ billId: bill.id, amount, content: `Bill ${bill.tableName} ${bill.id}` }, paymentSettings).then((result) => { if (active) setPaymentQr(result.qrCodeImage); }).catch((error) => { if (active) { setPaymentQr(""); setPaymentSettingsError(errorMessage(error)); } });
     return () => { active = false; };
   }, [bill?.id, bill?.tableName, bill?.totalAmount, isAdmin, paymentDiscountEnabled, paymentDiscountInput, paymentMode, paymentSettings?.accountName, paymentSettings?.accountNumber, paymentSettings?.bankId, paymentSettings?.tingeeVirtualAccount, paymentSheetOpen]);
 

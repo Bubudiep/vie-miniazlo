@@ -87,11 +87,41 @@ export const storeService = {
 };
 
 export const billPaymentService = {
-  getSettings() {
-    return pb.send<BillPaymentSettings>('/api/table-billing/payment-settings', { method: 'GET' });
+  getSettings(storeId = String((pb.authStore.model as { store?: string } | null)?.store || "")) {
+    return pb.send<BillPaymentSettings>('/api/table-billing/payment-settings', { method: 'GET' }).then((settings) => {
+      this.cacheSettings(storeId, settings);
+      return settings;
+    });
+  },
+  getCachedSettings(storeId = String((pb.authStore.model as { store?: string } | null)?.store || "")) {
+    if (!storeId) return null;
+    try {
+      return JSON.parse(localStorage.getItem(`billiard:payment-settings:${storeId}:v1`) || "null") as BillPaymentSettings | null;
+    } catch {
+      return null;
+    }
+  },
+  cacheSettings(storeId: string, settings: BillPaymentSettings) {
+    if (!storeId) return;
+    try { localStorage.setItem(`billiard:payment-settings:${storeId}:v1`, JSON.stringify(settings)); } catch { /* Cache is optional. */ }
   },
   saveSettings(settings: BillPaymentSettings) {
-    return pb.send<BillPaymentSettings>('/api/table-billing/payment-settings', { method: 'PATCH', body: settings });
+    const storeId = String((pb.authStore.model as { store?: string } | null)?.store || "");
+    return pb.send<BillPaymentSettings>('/api/table-billing/payment-settings', { method: 'PATCH', body: settings }).then((saved) => {
+      this.cacheSettings(storeId, saved);
+      return saved;
+    });
+  },
+  getQrFast(input: { tableId?: string; billId?: string; amount: number; content: string }, settings: BillPaymentSettings) {
+    const accountNumber = String(settings.accountNumber || "").replace(/\s+/g, "");
+    const bankId = String(settings.bankId || "").trim();
+    const accountName = String(settings.accountName || "").trim();
+    if (!settings.tingeeVirtualAccount && /^\d{4,24}$/.test(accountNumber) && bankId && accountName) {
+      const content = String(input.content || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, (character) => character === "Đ" ? "D" : "d").slice(0, 120);
+      const query = new URLSearchParams({ bank: bankId, acc: accountNumber, template: "compact", amount: String(input.amount), des: content, showinfo: "true", holder: accountName });
+      return Promise.resolve({ qrCodeImage: `https://vietqr.app/img?${query.toString()}`, qrCode: "", qrAccount: accountNumber });
+    }
+    return this.getQr(input);
   },
   getQr(input: { tableId?: string; billId?: string; amount: number; content: string }) {
     return pb.send<{ qrCodeImage: string; qrCode: string; qrAccount: string }>('/api/table-billing/payment-qr', { method: 'POST', body: input });
@@ -206,7 +236,7 @@ export const tableService = {
 
 export const tableBillingService = {
   async getPublicDetail(tableId: string) {
-    const result = await pb.send<{ ok: boolean; storeName: string; tableName: string; payment: Pick<BillPaymentSettings, 'bankId' | 'accountNumber' | 'accountName' | 'tingeeVirtualAccount'>; menu: TableBillProduct[]; bill: TableBill | null }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_detail', tableId } });
+    const result = await pb.send<{ ok: boolean; storeName: string; tableName: string; payment: Pick<BillPaymentSettings, 'bankId' | 'accountNumber' | 'accountName' | 'tingeeVirtualAccount'>; menu: TableBillProduct[]; bill: TableBill | null; unpaidBills: TableBill[] }>('/api/table-billing/action', { method: 'POST', body: { action: 'public_detail', tableId } });
     return result;
   },
   async getPublicTables(storeId: string) {
