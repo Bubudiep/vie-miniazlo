@@ -239,8 +239,8 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
   const toDate = parseRange(to, true);
   if (!fromDate || !toDate || fromDate >= toDate)
     throw new BadRequestError("Khoảng thời gian không hợp lệ");
-  if (toDate.getTime() - fromDate.getTime() > 30 * 24 * 60 * 60 * 1000)
-    throw new BadRequestError("Chỉ được lọc tối đa 30 ngày");
+  if (toDate.getTime() - fromDate.getTime() > 32 * 24 * 60 * 60 * 1000)
+    throw new BadRequestError("Chỉ được lọc tối đa 32 ngày");
   if (!Number.isSafeInteger(page) || page < 1)
     throw new BadRequestError("Trang báo cáo không hợp lệ");
   if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 5000)
@@ -469,6 +469,54 @@ routerAdd("GET", "/api/table-billing/report", (c) => {
     hasMore: start + pageSize < payments.length,
   });
 });
+
+routerAdd("GET", "/api/admin/table-billing/report-settings", (c) => {
+  const auth = c.requestInfo().auth || c.auth
+  if (!auth) throw new UnauthorizedError("Cần đăng nhập")
+  if (auth.get("role") !== "admin") throw new ForbiddenError("Chỉ admin mới được thao tác")
+  const store = String(auth.get("store") || "")
+  if (!store) throw new ForbiddenError("Tài khoản chưa thuộc cửa hàng")
+  let settings = null
+  try { settings = $app.findFirstRecordByFilter("report_settings", "store = {:store}", { store }) } catch (e) {}
+  const defaults = [{ name: "Ca 1", start: "08:00", end: "20:00" }, { name: "Ca 2", start: "20:00", end: "08:00" }]
+  let shifts = defaults
+  let shiftType = 2
+  if (settings) {
+    shiftType = Number(settings.get("shift_type")) === 3 ? 3 : 2
+    try { const parsed = JSON.parse(String(settings.get("shifts") || "[]")); if (Array.isArray(parsed) && parsed.length === shiftType) shifts = parsed } catch (e) {}
+  }
+  return c.json(200, { shiftType, shifts })
+})
+
+routerAdd("PATCH", "/api/admin/table-billing/report-settings", (c) => {
+  const info = c.requestInfo()
+  const auth = info.auth || c.auth
+  if (!auth) throw new UnauthorizedError("Cần đăng nhập")
+  if (auth.get("role") !== "admin") throw new ForbiddenError("Chỉ admin mới được thao tác")
+  const store = String(auth.get("store") || "")
+  if (!store) throw new ForbiddenError("Tài khoản chưa thuộc cửa hàng")
+  const shiftType = Number(info.body && info.body.shiftType)
+  const shifts = info.body && info.body.shifts
+  if (![2, 3].includes(shiftType) || !Array.isArray(shifts) || shifts.length !== shiftType) throw new BadRequestError("Cấu hình số ca không hợp lệ")
+  const cleanShifts = shifts.map((shift) => {
+    const name = String(shift && shift.name || "").trim().slice(0, 40)
+    const start = String(shift && shift.start || "")
+    const end = String(shift && shift.end || "")
+    if (!name || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(start) || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(end) || start === end) throw new BadRequestError("Giờ bắt đầu và kết thúc ca không hợp lệ")
+    return { name, start, end }
+  })
+  if (cleanShifts.some((shift, index) => cleanShifts.some((other, otherIndex) => index !== otherIndex && shift.name.toLowerCase() === other.name.toLowerCase()))) throw new BadRequestError("Tên ca không được trùng")
+  if (cleanShifts.some((shift, index) => shift.end !== cleanShifts[(index + 1) % shiftType].start)) throw new BadRequestError("Các ca phải nối tiếp nhau đủ 24 giờ")
+  let settings
+  try { settings = $app.findFirstRecordByFilter("report_settings", "store = {:store}", { store }) }
+  catch (e) { settings = new Record($app.findCollectionByNameOrId("report_settings")); settings.set("store", store) }
+  settings.set("shift_hours", 8)
+  settings.set("shift_type", shiftType)
+  settings.set("shifts", JSON.stringify(cleanShifts))
+  settings.set("updated_by", auth.id)
+  $app.save(settings)
+  return c.json(200, { shiftType, shifts: cleanShifts })
+})
 
 routerAdd("GET", "/api/table-billing/product-history", (c) => {
   const info = c.requestInfo();

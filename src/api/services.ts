@@ -373,6 +373,15 @@ export const tableBillHistoryService = {
   },
 };
 
+export const reportSettingsService = {
+  get() {
+    return pb.send<{ shiftType: 2 | 3; shifts: { name: string; start: string; end: string }[] }>(`/api/admin/table-billing/report-settings`, { method: 'GET' });
+  },
+  save(shiftType: 2 | 3, shifts: { name: string; start: string; end: string }[]) {
+    return pb.send<{ shiftType: 2 | 3; shifts: { name: string; start: string; end: string }[] }>(`/api/admin/table-billing/report-settings`, { method: 'PATCH', body: { shiftType, shifts } });
+  },
+};
+
 export const inventoryService = {
   getSettings() {
     return pb.send<InventorySettings>('/api/admin/inventory/settings', { method: 'GET' });
